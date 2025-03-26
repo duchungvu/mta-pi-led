@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTA Train Status - 59th St</title>
+    <style>
+        :root {
+            --line-4: #00933C;  /* Green */
+            --line-5: #00933C;  /* Green */
+            --line-6: #00933C;  /* Green */
+            --line-N: #FCCC0A;  /* Yellow */
+            --line-R: #FCCC0A;  /* Yellow */
+            --line-W: #FCCC0A;  /* Yellow */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: #2d3748;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: #1a365d;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .timestamp {
+            font-size: 0.9rem;
+            color: #718096;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .train-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .train-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .train-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .train-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .train-number[data-route="4"] { color: var(--line-4); }
+        .train-number[data-route="5"] { color: var(--line-5); }
+        .train-number[data-route="6"] { color: var(--line-6); }
+        .train-number[data-route="N"] { color: var(--line-N); }
+        .train-number[data-route="R"] { color: var(--line-R); }
+        .train-number[data-route="W"] { color: var(--line-W); }
+
+        .direction {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.1rem;
+            color: #4a5568;
+            margin-bottom: 1rem;
+        }
+
+        .arrivals {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .arrival {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.2rem;
+            color: #2d3748;
+            padding: 0.5rem;
+            background: #f7fafc;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+
+        .arrival:hover {
+            background: #edf2f7;
+        }
+
+        .refresh-button {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .refresh-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(66, 153, 225, 0.3);
+        }
+
+        .refresh-button:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .container {
+                padding: 1.5rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .train-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚇 MTA Train Status - 59th St</h1>
+            <div class="timestamp">
+                <span>🕒 {{ train_data.timestamp }}</span>
+            </div>
+        </div>
+
+        <div class="train-grid">
+            {% for route, data in train_data.trains.items() %}
+            <div class="train-card">
+                <div class="train-number" data-route="{{ route }}">
+                    {% if route in ['4', '5', '6'] %}
+                    🟢
+                    {% else %}
+                    🟡
+                    {% endif %}
+                    {{ route }} Train
+                </div>
+                
+                <div class="direction">
+                    <span>⬆️ Uptown</span>
+                </div>
+                <div class="arrivals">
+                    {% for arrival in data.uptown.next_arrivals %}
+                    <div class="arrival">
+                        {% if arrival == 'Now' %}
+                        🚂 Now
+                        {% else %}
+                        ⏱️ {{ arrival }}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="direction">
+                    <span>⬇️ Downtown</span>
+                </div>
+                <div class="arrivals">
+                    {% for arrival in data.downtown.next_arrivals %}
+                    <div class="arrival">
+                        {% if arrival == 'Now' %}
+                        🚂 Now
+                        {% else %}
+                        ⏱️ {{ arrival }}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="text-align: center; margin-top: 2rem;">
+            <button class="refresh-button" onclick="window.location.reload()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+</body>
+</html> 

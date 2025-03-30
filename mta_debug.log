@@ -1,7 +1,5 @@
-2025-03-29 23:56:55,529 - DEBUG - Starting new HTTPS connection (1): api-endpoint.mta.info:443
-2025-03-29 23:56:55,793 - DEBUG - https://api-endpoint.mta.info:443 "GET /Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw HTTP/1.1" 200 16484
-2025-03-29 23:56:55,800 - DEBUG - Found routes in feed nqrw: ['N', 'R']
-2025-03-29 23:56:55,800 - DEBUG - Route N - Uptown: ['Now', '17 min']
-2025-03-29 23:56:55,800 - DEBUG - Route N - Downtown: ['5 min', '27 min']
-2025-03-29 23:56:55,800 - DEBUG - Route R - Uptown: ['3 min']
-2025-03-29 23:56:55,801 - INFO - 127.0.0.1 - - [29/Mar/2025 23:56:55] "GET /?station=lexington_59 HTTP/1.1" 200 -
+2025-03-30 15:31:19,791 - DEBUG - Starting new HTTPS connection (1): api-endpoint.mta.info:443
+2025-03-30 15:31:19,957 - DEBUG - https://api-endpoint.mta.info:443 "GET /Dataservice/mtagtfsfeeds/nyct%2Fgtfs HTTP/1.1" 200 27600
+2025-03-30 15:31:19,965 - DEBUG - Found routes in feed 1234567: ['1']
+2025-03-30 15:31:19,965 - DEBUG - Route 1 - Uptown: ['8 min', '13 min', '19 min']
+2025-03-30 15:31:19,972 - INFO - 127.0.0.1 - - [30/Mar/2025 15:31:19] "GET /?stations=J27&stations=631 HTTP/1.1" 200 -

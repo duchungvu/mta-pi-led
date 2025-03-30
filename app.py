@@ -5,22 +5,14 @@ import logging
 from google.transit import gtfs_realtime_pb2
 import os
 from mta_feeds import FEEDS, ROUTE_TO_FEED
+from station_data import load_station_data, is_valid_station, get_default_station, get_station_name, get_station_lines, get_station_direction_codes
+from route_data import load_route_data
 
 app = Flask(__name__)
 
-# Station configurations
-STATIONS = {
-    'lexington_59': {
-        'name': 'Lexington Av/59 St (N, R, W)',
-        'stops': ['R11N', 'R11S'],
-        'routes': ['N', 'R', 'W']
-    },
-    '59_st': {
-        'name': '59 St (4, 5, 6)',
-        'stops': ['629N', '629S'],
-        'routes': ['4', '5', '6']
-    }
-}
+# Load station and route data
+STATIONS = load_station_data()
+ROUTES = load_route_data()
 
 def clear_log_file():
     # Clear the log file
@@ -35,38 +27,58 @@ def setup_logging():
     )
 
 def initialize_train_status(selected_station):
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
     return {
         route: {
             'uptown': {'status': 'No data', 'next_arrivals': []},
-            'downtown': {'status': 'No data', 'next_arrivals': []}
-        } for route in STATIONS[selected_station]['routes']
+            'downtown': {'status': 'No data', 'next_arrivals': []},
+            'color': ROUTES.get(route, {}).get('color', '#808080'),
+            'text_color': ROUTES.get(route, {}).get('text_color', '#FFFFFF'),
+            'name': ROUTES.get(route, {}).get('name', f'{route} Train')
+        } for route in get_station_lines(selected_station)
     }
 
 def initialize_route_times(selected_station):
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
     return {
         route: {'uptown': set(), 'downtown': set()} 
-        for route in STATIONS[selected_station]['routes']
+        for route in get_station_lines(selected_station)
     }
 
 def get_needed_feeds(selected_station):
-    return set(ROUTE_TO_FEED[route] for route in STATIONS[selected_station]['routes'])
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
+    return set(ROUTE_TO_FEED[route] for route in get_station_lines(selected_station))
 
 def process_stop_time_update(stop_time_update, current_time, route_times, base_route, selected_station):
-    if stop_time_update.stop_id in STATIONS[selected_station]['stops']:
-        for time_field in ['arrival', 'departure']:
-            if not stop_time_update.HasField(time_field):
-                continue
-                
-            time = getattr(stop_time_update, time_field).time
-            minutes_away = (time - current_time) / 60
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
+    direction_codes = get_station_direction_codes(selected_station)
+    if stop_time_update.stop_id in direction_codes:
+        # Only process arrival times
+        if not stop_time_update.HasField('arrival'):
+            return
             
-            if current_time - 60 < time <= current_time + 1800:  # 30 minutes = 1800 seconds
-                if stop_time_update.stop_id in [STATIONS[selected_station]['stops'][0]]:  # First stop is uptown
-                    route_times[base_route]['uptown'].add(time)
-                elif stop_time_update.stop_id in [STATIONS[selected_station]['stops'][1]]:  # Second stop is downtown
-                    route_times[base_route]['downtown'].add(time)
+        time = stop_time_update.arrival.time
+        
+        # Only include future times
+        if current_time < time:
+            # Add to appropriate direction based on stop ID
+            if stop_time_update.stop_id.endswith('N'):  # Northbound/Uptown
+                route_times[base_route]['uptown'].add(time)
+            elif stop_time_update.stop_id.endswith('S'):  # Southbound/Downtown
+                route_times[base_route]['downtown'].add(time)
 
 def process_feed(feed_url, route_times, current_time, selected_station):
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
     response = requests.get(
         feed_url, 
         headers={
@@ -87,7 +99,7 @@ def process_feed(feed_url, route_times, current_time, selected_station):
         route_id = trip_update.trip.route_id
         
         base_route = route_id[0] if route_id in ['4X', '5X', '6X'] else route_id
-        if base_route not in STATIONS[selected_station]['routes']:
+        if base_route not in get_station_lines(selected_station):
             continue
             
         route_ids.add(route_id)
@@ -109,8 +121,11 @@ def format_arrival_times(times, current_time):
     return next_arrivals
 
 def process_route_times(route_times, current_time, selected_station):
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
+    
     train_status = initialize_train_status(selected_station)
-    for route_id in STATIONS[selected_station]['routes']:
+    for route_id in get_station_lines(selected_station):
         for direction in ['uptown', 'downtown']:
             times = sorted(list(route_times[route_id][direction]))[:3]
             if times:
@@ -125,6 +140,11 @@ def get_train_status(selected_station):
     try:
         clear_log_file()
         setup_logging()
+        
+        # Validate station code
+        if not is_valid_station(selected_station):
+            selected_station = get_default_station()
+            logging.warning(f"Invalid station code provided. Using default station: {selected_station}")
         
         train_status = initialize_train_status(selected_station)
         route_times = initialize_route_times(selected_station)
@@ -142,7 +162,7 @@ def get_train_status(selected_station):
             'status': 'success',
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
             'trains': train_status,
-            'station_name': STATIONS[selected_station]['name']
+            'station_name': get_station_name(selected_station)
         }
         
     except Exception as e:
@@ -153,15 +173,20 @@ def get_train_status(selected_station):
             'trains': {
                 route: {
                     'uptown': {'next_arrivals': ['Error loading data']},
-                    'downtown': {'next_arrivals': ['Error loading data']}
-                } for route in STATIONS[selected_station]['routes']
+                    'downtown': {'next_arrivals': ['Error loading data']},
+                    'color': ROUTES.get(route, {}).get('color', '#808080'),
+                    'text_color': ROUTES.get(route, {}).get('text_color', '#FFFFFF'),
+                    'name': ROUTES.get(route, {}).get('name', f'{route} Train')
+                } for route in get_station_lines(get_default_station())
             },
-            'station_name': STATIONS[selected_station]['name']
+            'station_name': get_station_name(selected_station)
         }
 
 @app.route('/')
 def index():
-    selected_station = request.args.get('station', 'lexington_59')  # Default to Lexington/59
+    selected_station = request.args.get('station', get_default_station())
+    if not is_valid_station(selected_station):
+        selected_station = get_default_station()
     train_data = get_train_status(selected_station)
     return render_template('index.html', train_data=train_data, stations=STATIONS, selected_station=selected_station)
 

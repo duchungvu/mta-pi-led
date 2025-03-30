@@ -49,11 +49,18 @@ This project displays real-time status information for the 4, 5, and 6 trains at
 
 # MTA GTFS-realtime Feed Structure
 
-This document explains the structure of the MTA GTFS-realtime feed data.
+This document explains the structure of the MTA GTFS-realtime feed data. For the complete specification and detailed field descriptions, please refer to:
+- [Official GTFS-realtime documentation](https://gtfs.org/documentation/realtime/reference)
+- [MTA GTFS-realtime documentation](https://www.mta.info/document/134521)
 
-## Feed Structure
+## Feed Overview
 
-The feed contains an array of entities, where each entity represents a train's current status and upcoming stops.
+The MTA GTFS-realtime feed provides real-time information about train locations and arrival times. The feed is updated every 30 seconds and contains two types of entities for each train:
+
+1. `tripUpdate`: Contains information about upcoming stops and arrival/departure times
+2. `vehicle`: Contains real-time information about where a train currently is
+
+Each train run will have both a `tripUpdate` entity (showing upcoming stops) and a `vehicle` entity (showing current position).
 
 ### Entity Level
 ```json
@@ -81,6 +88,25 @@ The feed contains an array of entities, where each entity represents a train's c
 }
 ```
 
+### Vehicle Entity
+```json
+{
+  "id": "000002N",
+  "vehicle": {
+    "trip": {
+      "tripId": "138950_N..N",     // Format: HHMMSS_Route..Direction
+      "startTime": "23:12:07",     // Scheduled start time of the train run
+      "startDate": "20250327",     // Date of the train run (YYYYMMDD)
+      "routeId": "N"               // Route identifier (N, R, W, 4, 5, 6, etc.)
+    },
+    "currentStopSequence": 37,     // Sequence number of the current stop
+    "currentStatus": "STOPPED_AT", // Current status of the train
+    "timestamp": "1743136640",     // When this position was recorded
+    "stopId": "R08N"              // Current stop ID where the train is located
+  }
+}
+```
+
 ## Field Descriptions
 
 ### Entity ID
@@ -98,7 +124,7 @@ The feed contains an array of entities, where each entity represents a train's c
 - `startDate`: The date of the train run in YYYYMMDD format
 - `routeId`: The route identifier (N, R, W, 4, 5, 6, etc.)
 
-### Stop Time Updates
+### Stop Time Updates (tripUpdate entity)
 Each stop in the `stopTimeUpdate` array contains:
 - `arrival`: Time when the train will arrive at the stop
   - `time`: Unix timestamp for arrival
@@ -111,53 +137,15 @@ Each stop in the `stopTimeUpdate` array contains:
     - 5th station in sequence
     - Northbound direction
 
-## Stop ID Mappings
-
-### N, R, W Trains
-- R01N: Times Square (Northbound)
-- R02N: 49th St (Northbound)
-- R03N: 57th St (Northbound)
-- R04N: 5th Ave (Northbound)
-- R05N: Lexington Ave (Northbound)
-- R06N: 59th St (Northbound)
-- R07N: Queensboro Plaza (Northbound)
-- R08N: 39th Ave (Northbound)
-- R09N: 36th Ave (Northbound)
-- R10N: Steinway St (Northbound)
-- R11N: 46th St (Northbound)
-- R12N: Northern Blvd (Northbound)
-- R13N: 65th St (Northbound)
-- R14N: 71st Ave (Northbound)
-- R15N: 75th Ave (Northbound)
-- R16N: Continental Ave (Northbound)
-- R17N: 169th St (Northbound)
-- R18N: 179th St (Northbound)
-- R19N: Jamaica Center (Northbound)
-
-### 4, 5, 6 Trains
-- 635N: 125th St (Northbound)
-- 636N: 116th St (Northbound)
-- 637N: 110th St (Northbound)
-- 638N: 103rd St (Northbound)
-- 639N: 96th St (Northbound)
-- 640N: 86th St (Northbound)
-- 641N: 77th St (Northbound)
-- 642N: 68th St (Northbound)
-- 643N: 59th St (Northbound)
-- 644N: 51st St (Northbound)
-- 645N: Grand Central (Northbound)
-- 646N: 33rd St (Northbound)
-- 647N: 28th St (Northbound)
-- 648N: 23rd St (Northbound)
-- 649N: 14th St (Northbound)
-- 650N: Astor Place (Northbound)
-- 651N: Bleecker St (Northbound)
-- 652N: Spring St (Northbound)
-- 653N: Canal St (Northbound)
-- 654N: Brooklyn Bridge (Northbound)
-- 655N: Fulton St (Northbound)
-- 656N: Wall St (Northbound)
-- 657N: Bowling Green (Northbound)
+### Vehicle Information (vehicle entity)
+- `currentStopSequence`: The sequence number of the current stop in the train's route
+- `currentStatus`: The current status of the train
+  - "STOPPED_AT": Train is currently stopped at a station
+  - "INCOMING_AT": Train is approaching a station
+  - "IN_TRANSIT_TO": Train is moving to a station
+  - "OUT_OF_SERVICE": Train is not in service
+- `timestamp`: Unix timestamp when this position was recorded
+- `stopId`: The current stop ID where the train is located
 
 ## Time Format
 - All arrival and departure times are provided in Unix timestamps
@@ -170,5 +158,6 @@ Each stop in the `stopTimeUpdate` array contains:
 
 ## Notes
 - When arrival and departure times are the same, it indicates the train is not dwelling at the station
-- The feed provides real-time updates, so times may change between updates
-- Stop sequences are ordered from current location to final destination 
+- The feed provides real-time updates every 30 seconds
+- Stop sequences are ordered from current location to final destination
+- Each train run may have both a `tripUpdate` entity (showing upcoming stops) and a `vehicle` entity (showing current position) 

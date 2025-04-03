@@ -184,11 +184,34 @@ def get_train_status(selected_station):
 
 @app.route('/')
 def index():
-    selected_station = request.args.get('station', get_default_station())
-    if not is_valid_station(selected_station):
-        selected_station = get_default_station()
-    train_data = get_train_status(selected_station)
-    return render_template('index.html', train_data=train_data, stations=STATIONS, selected_station=selected_station)
+    # Get stations from query params
+    selected_stations = request.args.getlist('stations')
+    
+    # If no stations provided, use default
+    if not selected_stations:
+        selected_stations = [get_default_station()]
+    
+    # Get data for each station
+    train_data = {
+        'status': 'success',
+        'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+        'trains': {}
+    }
+    
+    # Get data for each station and merge train data
+    for station_id in selected_stations:
+        station_data = get_train_status(station_id)
+        
+        # Merge train data
+        if 'trains' in station_data:
+            for route, route_data in station_data['trains'].items():
+                if route not in train_data['trains']:
+                    train_data['trains'][route] = route_data
+    
+    return render_template('index.html', 
+                          train_data=train_data, 
+                          stations=STATIONS, 
+                          selected_stations=selected_stations)
 
 if __name__ == '__main__':
     app.run(debug=True) 

@@ -5,245 +5,599 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MTA Train Status</title>
     <style>
+        /* Minimal Reset */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.6;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            color: #2d3748;
-            min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .container {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.5;
+            background-color: #f8f9fa;
+            color: #212529;
+            padding: 1rem;
             max-width: 1200px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
         }
-
-        .header {
+        
+        /* Header */
+        header {
+            padding: 1rem 0;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #e2e8f0;
         }
-
+        
         h1 {
-            font-size: 2.5rem;
-            color: #1a365d;
-            font-weight: 700;
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+        
+        .timestamp {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        /* Station Controls */
+        .station-controls {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background-color: #fff;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .station-form {
+            margin-bottom: 1rem;
+        }
+        
+        .select-container {
+            position: relative;
+            width: 100%;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+        
+        .station-options {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .station-option {
+            padding: 0.75rem;
+            cursor: pointer;
+        }
+        
+        .station-option:hover {
+            background-color: #f1f3f5;
+        }
+        
+        .option-content {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
         }
-
-        .station-selector {
-            margin-bottom: 2rem;
-            text-align: center;
+        
+        .option-line-bubbles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.2rem;
         }
-
-        select {
-            padding: 12px;
-            font-size: 1.1rem;
-            border-radius: 10px;
-            border: 2px solid #e2e8f0;
-            background-color: white;
-            width: 80%;
-            max-width: 500px;
-            cursor: pointer;
-            transition: border-color 0.2s;
-        }
-
-        select:hover {
-            border-color: #cbd5e0;
-        }
-
-        .station-info {
-            text-align: center;
-            margin-bottom: 2rem;
-            font-size: 1.2rem;
-            color: #4a5568;
-        }
-
-        .timestamp {
-            text-align: center;
-            color: #718096;
-            margin-bottom: 2rem;
-            font-size: 0.9rem;
-        }
-
-        .train-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .train-card {
-            background-color: var(--bg-color, #808080);
-            color: var(--text-color, #FFFFFF);
-            border-radius: 15px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .train-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .train-route {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 1.5rem;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-            text-align: center;
-        }
-
-        .direction {
-            margin: 1rem 0;
-            background: rgba(255, 255, 255, 0.15);
-            padding: 1rem;
-            border-radius: 10px;
-            backdrop-filter: blur(5px);
-        }
-
-        .direction-title {
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-            font-size: 1.2rem;
-            opacity: 0.95;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .arrival-times {
-            list-style: none;
-        }
-
-        .arrival-times li {
-            padding: 0.5rem 0;
-            font-size: 1.1rem;
-            opacity: 0.9;
-            text-align: center;
+        
+        .station-name {
             font-weight: 500;
         }
-
-        .error {
-            color: #e53e3e;
-            text-align: center;
-            padding: 2rem;
-            background: #fff5f5;
-            border-radius: 10px;
-            margin: 2rem 0;
+        
+        .station-option.filtered {
+            display: none;
         }
-
-        .refresh-button {
-            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+        
+        button {
+            background-color: #0d6efd;
             color: white;
             border: none;
             padding: 0.75rem 1.5rem;
-            border-radius: 10px;
+            border-radius: 4px;
             font-size: 1rem;
             cursor: pointer;
+        }
+        
+        button.delete-btn {
+            background-color: #dc3545;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            margin-left: auto;
+        }
+        
+        .current-stations {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .station-chip {
+            display: flex;
+            align-items: center;
+            background-color: #e9ecef;
+            padding: 0.5rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.875rem;
+            gap: 0.5rem;
+        }
+        
+        .chip-line-bubbles {
+            display: flex;
+            gap: 0.2rem;
+            flex-wrap: wrap;
+        }
+        
+        .chip-line-bubble {
+            width: 1.2rem;
+            height: 1.2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.7rem;
+            line-height: 1;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        /* Station Cards */
+        .stations-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        
+        .station-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+        }
+        
+        .station-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+        }
+        
+        .station-info {
+            flex: 1;
+        }
+        
+        .station-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .station-lines {
+            display: flex;
+            gap: 0.3rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+        
+        .station-line-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #495057;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+        }
+        
+        /* NYC Subway Line Circles */
+        .line-bubble {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+            line-height: 1;
+            margin: 0 auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        /* NYC Subway Line Colors */
+        .line-1, .line-2, .line-3 { background-color: #EE352E; color: white; }
+        .line-4, .line-5, .line-6 { background-color: #00933C; color: white; }
+        .line-7 { background-color: #B933AD; color: white; }
+        .line-A, .line-C, .line-E { background-color: #0039A6; color: white; }
+        .line-B, .line-D, .line-F, .line-M { background-color: #FF6319; color: white; }
+        .line-G { background-color: #6CBE45; color: white; }
+        .line-J, .line-Z { background-color: #996633; color: white; }
+        .line-L { background-color: #A7A9AC; color: white; }
+        .line-N, .line-Q, .line-R, .line-W { background-color: #FCCC0A; color: black; }
+        .line-S { background-color: #808183; color: white; }
+        
+        /* Arrivals */
+        .arrivals-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            justify-content: center;
+        }
+        
+        .arrival-card {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 0 auto;
+            max-width: 280px;
+            width: 100%;
+        }
+        
+        .line-name {
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #212529;
+        }
+        
+        .arrival-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.75rem;
+        }
+        
+        .arrival-title {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.875rem;
+            letter-spacing: 0.05em;
+        }
+        
+        .directions-container {
+            display: flex;
+            gap: 1rem;
+            justify-content: space-between;
+        }
+        
+        .direction-column {
+            flex: 1;
+        }
+        
+        .direction-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .direction-title {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            padding: 0.25rem 0;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 4px;
+            width: 100%;
+        }
+        
+        .arrival-times {
+            list-style: none;
+        }
+        
+        .arrival-item {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            margin: 2rem auto;
-            transition: transform 0.2s, box-shadow 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #dee2e6;
         }
-
-        .refresh-button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(66, 153, 225, 0.3);
+        
+        .arrival-item:last-child {
+            border-bottom: none;
         }
-
-        @media (max-width: 768px) {
-            body {
-                padding: 1rem;
-            }
-
-            .container {
-                padding: 1.5rem;
-            }
-
+        
+        .arrival-time {
+            font-weight: 500;
+        }
+        
+        /* Error State */
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        /* Actions */
+        .actions {
+            text-align: center;
+            margin-top: 2rem;
+        }
+        
+        /* Responsive */
+        @media (max-width: 576px) {
             h1 {
-                font-size: 2rem;
+                font-size: 1.5rem;
             }
-
-            .train-grid {
-                grid-template-columns: 1fr;
+            
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .timestamp {
+                margin-top: 0.5rem;
+            }
+            
+            .station-form {
+                flex-direction: column;
             }
         }
+        
+        /* Card Borders by Line */
+        .card-line-1, .card-line-2, .card-line-3 { border-top: 3px solid #EE352E; }
+        .card-line-4, .card-line-5, .card-line-6 { border-top: 3px solid #00933C; }
+        .card-line-7 { border-top: 3px solid #B933AD; }
+        .card-line-A, .card-line-C, .card-line-E { border-top: 3px solid #0039A6; }
+        .card-line-B, .card-line-D, .card-line-F, .card-line-M { border-top: 3px solid #FF6319; }
+        .card-line-G { border-top: 3px solid #6CBE45; }
+        .card-line-J, .card-line-Z { border-top: 3px solid #996633; }
+        .card-line-L { border-top: 3px solid #A7A9AC; }
+        .card-line-N, .card-line-Q, .card-line-R, .card-line-W { border-top: 3px solid #FCCC0A; }
+        .card-line-S { border-top: 3px solid #808183; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🚇 MTA Train Status</h1>
-            <div class="timestamp">
-                <span>🕒 {{ train_data.timestamp }}</span>
-            </div>
-        </div>
+    <header>
+        <h1>MTA Train Status</h1>
+        <div class="timestamp">{{ train_data.timestamp }}</div>
+    </header>
 
-        <div class="station-selector">
-            <form method="get">
-                <select name="station" onchange="this.form.submit()">
+    <div class="station-controls">
+        <form class="station-form" id="addStationForm">
+            <div class="select-container">
+                <input type="text" id="stationSearch" class="search-input" placeholder="Search for a station..." autocomplete="off">
+                <div class="station-options" id="stationOptions">
                     {% for station_id, station in stations.items() %}
-                    <option value="{{ station_id }}" {% if station_id == selected_station %}selected{% endif %}>
-                        {{ station.station_name }} ({{ ','.join(station.lines) }})
-                    </option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
-
-        {% if train_data.status == 'error' %}
-        <div class="error">
-            Error loading train data. Please try again later.
-        </div>
-        {% else %}
-        <div class="train-grid">
-            {% for route, data in train_data.trains.items() %}
-            <div class="train-card" style="--bg-color: {{ data.color|default('#808080') }}; --text-color: {{ data.text_color|default('#FFFFFF') }}">
-                <div class="train-route">{{ data.name }}</div>
-                {% for direction, direction_data in data.items() %}
-                    {% if direction != 'color' and direction != 'text_color' and direction != 'name' %}
-                    <div class="direction">
-                        <div class="direction-title">{{ direction|title }}</div>
-                        <ul class="arrival-times">
-                            {% for arrival in direction_data.next_arrivals %}
-                            <li>{{ arrival }}</li>
-                            {% endfor %}
-                        </ul>
+                    <div class="station-option" data-station-id="{{ station_id }}" data-station-name="{{ station.name }}" data-station-lines="{{ ','.join(station.lines) }}">
+                        <div class="option-content">
+                            <div class="option-line-bubbles">
+                                {% for line in station.lines %}
+                                    {% if line in train_data.trains %}
+                                    <div class="chip-line-bubble line-{{ line }}">
+                                        {{ line }}
+                                    </div>
+                                    {% else %}
+                                    <div class="chip-line-bubble line-{{ line }}">
+                                        {{ line }}
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <span class="station-name">{{ station.name }}</span>
+                        </div>
                     </div>
-                    {% endif %}
-                {% endfor %}
+                    {% endfor %}
+                </div>
             </div>
+        </form>
+        
+        <div class="current-stations" id="currentStations">
+            {% for station_id in selected_stations %}
+                <div class="station-chip" data-station-id="{{ station_id }}">
+                    <div class="chip-line-bubbles">
+                        {% for line in stations[station_id].lines %}
+                            {% if line in train_data.trains %}
+                            <div class="chip-line-bubble line-{{ line }}">
+                                {{ line }}
+                            </div>
+                            {% else %}
+                            <div class="chip-line-bubble line-{{ line }}">
+                                {{ line }}
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <span class="station-name">{{ stations[station_id].name }}</span>
+                </div>
             {% endfor %}
-        </div>
-        {% endif %}
-
-        <div style="text-align: center;">
-            <button class="refresh-button" onclick="window.location.reload()">
-                🔄 Refresh
-            </button>
         </div>
     </div>
 
+    {% if train_data.status == 'error' %}
+    <div class="error-message">
+        Error loading train data. Please try again later.
+    </div>
+    {% else %}
+        <div class="stations-container">
+            {% for station_id in selected_stations %}
+                {% if station_id in stations %}
+                <div class="station-card">
+                    <div class="station-header">
+                        <div class="station-info">
+                            <div class="station-title">{{ stations[station_id].name }}</div>
+                        </div>
+                        <button class="delete-btn" onclick="removeStation('{{ station_id }}')">×</button>
+                    </div>
+                    
+                    <div class="arrivals-container">
+                        {% for line in stations[station_id].lines %}
+                            {% if line in train_data.trains %}
+                                <div class="arrival-card card-line-{{ line }}">
+                                    <div class="arrival-header">
+                                        <div class="line-bubble line-{{ line }}">
+                                            {{ line }}
+                                        </div>
+                                    </div>
+                                    <div class="directions-container">
+                                        {% for direction in ['uptown', 'downtown'] %}
+                                            {% if direction in train_data.trains[line] and direction != 'color' and direction != 'text_color' and direction != 'name' %}
+                                                <div class="direction-column">
+                                                    <div class="direction-title">{{ direction|title }}</div>
+                                                    <ul class="arrival-times">
+                                                        {% for arrival in train_data.trains[line][direction].next_arrivals %}
+                                                            <li class="arrival-item">
+                                                                <span class="arrival-time">{{ arrival }}</span>
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="actions">
+        <button onclick="window.location.reload()">
+            Refresh
+        </button>
+    </div>
+
     <script>
+        // Station Search Functionality
+        const stationSearch = document.getElementById('stationSearch');
+        const stationOptions = document.getElementById('stationOptions');
+        const stationOptionElements = document.querySelectorAll('.station-option');
+        
+        // Show options when clicking on search input
+        stationSearch.addEventListener('focus', function() {
+            stationOptions.style.display = 'block';
+        });
+        
+        // Hide options when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!stationSearch.contains(e.target) && !stationOptions.contains(e.target)) {
+                stationOptions.style.display = 'none';
+            }
+        });
+        
+        // Filter options based on search
+        stationSearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            
+            stationOptionElements.forEach(option => {
+                const stationName = option.dataset.stationName.toLowerCase();
+                const stationLines = option.dataset.stationLines.toLowerCase();
+                
+                if (stationName.includes(searchTerm) || stationLines.includes(searchTerm)) {
+                    option.style.display = 'block';
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+            
+            stationOptions.style.display = 'block';
+        });
+        
+        // Handle option selection
+        stationOptionElements.forEach(option => {
+            option.addEventListener('click', function() {
+                const stationId = this.dataset.stationId;
+                const stationName = this.dataset.stationName;
+                
+                // Set values in the form
+                stationSearch.value = stationName;
+                stationOptions.style.display = 'none';
+                
+                // Add the station immediately
+                addStation(stationId);
+            });
+        });
+        
+        // Function to add a station
+        function addStation(stationId) {
+            if (!stationId) return;
+            
+            // Get current stations from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const stations = urlParams.getAll('stations');
+            
+            // Only add if not already present
+            if (!stations.includes(stationId)) {
+                urlParams.append('stations', stationId);
+                window.location.search = urlParams.toString();
+            }
+        }
+        
+        // Handle form submission (now only triggered if someone presses Enter)
+        document.getElementById('addStationForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Get the station ID from the currently selected station
+            const searchTerm = stationSearch.value.toLowerCase();
+            let matchedStationId = null;
+            
+            // Find the matching station
+            stationOptionElements.forEach(option => {
+                const stationName = option.dataset.stationName.toLowerCase();
+                if (stationName === searchTerm) {
+                    matchedStationId = option.dataset.stationId;
+                }
+            });
+            
+            if (matchedStationId) {
+                addStation(matchedStationId);
+            }
+        });
+        
+        // Handle removing stations
+        function removeStation(stationId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const stations = urlParams.getAll('stations');
+            
+            // Clear all stations
+            urlParams.delete('stations');
+            
+            // Add back all except the one to remove
+            stations.forEach(station => {
+                if (station !== stationId) {
+                    urlParams.append('stations', station);
+                }
+            });
+            
+            window.location.search = urlParams.toString();
+        }
+        
         // Auto-refresh every 30 seconds
         setTimeout(function() {
             window.location.reload();

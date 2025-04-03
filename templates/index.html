@@ -229,6 +229,12 @@
             border-radius: 100px;
             font-size: 0.875rem;
             gap: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .station-chip:hover {
+            background-color: #dee2e6;
         }
         
         .chip-line-bubbles {
@@ -244,8 +250,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 0.6rem;
             font-weight: bold;
-            font-size: 0.7rem;
+            color: white;
             line-height: 1;
             box-shadow: 0 1px 2px rgba(0,0,0,0.2);
             border: 1px solid rgba(255,255,255,0.2);
@@ -372,7 +379,10 @@
         
         .direction-column {
             flex: 1;
-            min-width: 80px;
+            min-width: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         
         .direction-header {
@@ -389,6 +399,7 @@
             font-size: 0.8rem;
             letter-spacing: 0.05em;
             margin-bottom: 0.5rem;
+            color: #495057;
             text-align: center;
             padding: 0.5rem 0;
             background-color: rgba(0,0,0,0.05);
@@ -399,12 +410,17 @@
         
         .arrival-times {
             list-style: none;
+            padding: 0;
+            margin: 0;
+            text-align: center;
+            width: 100%;
         }
         
         .arrival-item {
+            margin-bottom: 0.25rem;
             display: flex;
+            justify-content: center;
             align-items: center;
-            gap: 0.5rem;
             padding: 0.5rem 0;
             border-bottom: 1px solid #dee2e6;
         }
@@ -415,6 +431,7 @@
         
         .arrival-time {
             font-weight: 500;
+            text-align: center;
         }
         
         /* Error State */
@@ -464,6 +481,31 @@
         .card-line-L { border-top: 3px solid #A7A9AC; }
         .card-line-N, .card-line-Q, .card-line-R, .card-line-W { border-top: 3px solid #FCCC0A; }
         .card-line-S { border-top: 3px solid #808183; }
+        
+        /* Welcome message styling */
+        .welcome-message {
+            text-align: center;
+            padding: 3rem 2rem;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            border: 1px dashed #dee2e6;
+            margin-bottom: 2rem;
+        }
+        
+        .welcome-message h2 {
+            color: #0039A6;
+            margin-bottom: 1rem;
+        }
+        
+        .welcome-message p {
+            color: #6c757d;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .welcome-icon {
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
@@ -535,9 +577,18 @@
     </div>
     {% else %}
         <div class="stations-container">
+            {% if selected_stations|length == 0 %}
+            <div class="welcome-message">
+                <h2>Welcome to MTA Train Status</h2>
+                <p>Search for a station above to view train arrivals</p>
+                <div class="welcome-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0039A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                </div>
+            </div>
+            {% endif %}
             {% for station_id in selected_stations %}
                 {% if station_id in stations %}
-                <div class="station-card">
+                <div class="station-card" data-station-id="{{ station_id }}">
                     <div class="station-header">
                         <div class="station-info">
                             <div class="station-title">{{ stations[station_id].name }}</div>
@@ -734,6 +785,11 @@
             chip.className = 'station-chip';
             chip.dataset.stationId = stationId;
             
+            // Add click event to scroll to station card
+            chip.addEventListener('click', function() {
+                scrollToStationCard(stationId);
+            });
+            
             // Line bubbles
             const lineContainer = document.createElement('div');
             lineContainer.className = 'chip-line-bubbles';
@@ -754,6 +810,29 @@
             chip.appendChild(nameSpan);
             currentStations.appendChild(chip);
         }
+        
+        // Scroll to station card
+        function scrollToStationCard(stationId) {
+            const stationCard = document.querySelector(`.station-card[data-station-id="${stationId}"]`);
+            if (stationCard) {
+                stationCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Flash effect to highlight the card
+                stationCard.style.transition = 'background-color 0.5s';
+                stationCard.style.backgroundColor = '#e6f7ff';
+                setTimeout(() => {
+                    stationCard.style.backgroundColor = 'white';
+                }, 1000);
+            }
+        }
+        
+        // Add click handlers to existing station chips
+        document.querySelectorAll('.station-chip').forEach(chip => {
+            const stationId = chip.dataset.stationId;
+            chip.addEventListener('click', function() {
+                scrollToStationCard(stationId);
+            });
+        });
         
         // Add station card to the stations container
         function addStationCard(stationId, data) {

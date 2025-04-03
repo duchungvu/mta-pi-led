@@ -187,9 +187,9 @@ def index():
     # Get stations from query params
     selected_stations = request.args.getlist('stations')
     
-    # If no stations provided, use default
-    if not selected_stations:
-        selected_stations = [get_default_station()]
+    # Don't use default station - keep empty if no stations provided
+    # if not selected_stations:
+    #     selected_stations = [get_default_station()]
     
     # Get data for each station
     train_data = {
@@ -220,4 +220,4 @@ def index():
                           selected_stations=selected_stations)
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(host='0.0.0.0', port=5000, debug=True) 

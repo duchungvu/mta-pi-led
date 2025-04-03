@@ -1,51 +1,115 @@
-# MTA Train Status Display
+# MTA Train Status
 
-This project displays real-time status information for the 4, 5, and 6 trains at the 59th St/Lexington Ave station. It's designed to be displayed on a Raspberry Pi with an LED matrix, but can also be viewed in a web browser.
+A real-time NYC subway train tracker application that displays upcoming train arrivals for stations across the MTA system.
+
+> **Note:** This application was generated with assistance from [Cursor](https://cursor.sh/), an AI-powered code editor.
+
+![MTA Train Status App](https://via.placeholder.com/800x450.png?text=MTA+Train+Status+App)
+
+## Features
+
+- 🚇 Real-time train arrival information for all MTA subway stations
+- 🔍 Search and add multiple stations to monitor simultaneously
+- 🎨 Visually accurate NYC subway line colors and styling
+- 🔄 Refresh individual stations or all stations at once
+- ⏱️ Visual indicators for imminent train arrivals
+- 📱 Responsive design that works on desktop and mobile devices
 
 ## Prerequisites
 
-- Python 3.7 or higher
+- Python 3.6 or higher
+- Flask
+- Protobuf and Google Transit libraries
+- Internet connection to access MTA's real-time data feeds
 
-## Setup
+## Installation
 
-1. Clone this repository
-2. Create and activate a virtual environment:
-   ```bash
-   # Create virtual environment
-   python -m venv venv
-
-   # Activate virtual environment
-   # On macOS/Linux:
-   source venv/bin/activate
-   # On Windows:
-   .\venv\Scripts\activate
+1. Clone the repository:
    ```
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
+   git clone https://github.com/yourusername/mta-train-status.git
+   cd mta-train-status
+   ```
+
+2. Install the required dependencies:
+   ```
+   pip install flask requests google-transit-realtime-feed-parser protobuf
    ```
 
 ## Running the Application
 
-1. Make sure your virtual environment is activated (you should see `(venv)` in your terminal prompt)
-2. Start the Flask application:
-   ```bash
+1. Start the Flask application:
+   ```
    python app.py
    ```
-3. Open your web browser and navigate to `http://localhost:5000`
 
-## Project Structure
+2. Open your browser and navigate to:
+   ```
+   http://localhost:5000
+   ```
 
-- `app.py`: Main Flask application
-- `templates/index.html`: HTML template for displaying train status
-- `requirements.txt`: Python dependencies
-- `venv/`: Virtual environment directory (created during setup)
+3. By default, the application will load with no stations selected. Search for and select stations to see train arrivals.
+
+## Sharing with Friends
+
+### Local Network
+To make the app accessible on your local network:
+1. The app is already configured to run on all network interfaces (`0.0.0.0`)
+2. Find your local IP address:
+   - On Mac: Run `ifconfig | grep "inet " | grep -v 127.0.0.1`
+   - On Windows: Run `ipconfig`
+3. Share the URL `http://YOUR_IP_ADDRESS:5000` with friends on the same network
+
+### Remote Access with ngrok
+To share the app with friends outside your network:
+1. Install ngrok: https://ngrok.com/download
+2. Run ngrok to create a tunnel to your local server:
+   ```
+   ngrok http 5000
+   ```
+3. Share the HTTPS URL provided by ngrok with your friends
+4. Note: Free tier ngrok URLs expire after a few hours
+
+## Using the Application
+
+### Adding Stations
+1. Use the search box to find stations by name or subway line
+2. Click on a station in the dropdown to add it to your dashboard
+3. The station card will appear with real-time arrival information
+
+### Managing Stations
+- Click on a station chip at the top to quickly scroll to that station
+- Click the "×" button on a station card to remove it
+- Click "Refresh this station" to update just that station's data
+- Click "Refresh All" to update all stations
+
+### Understanding the Display
+- **Now**: Trains arriving immediately (red background)
+- **1-2 min**: Trains arriving very soon (orange text)
+- **3+ min**: Regular upcoming trains
+
+## How It Works
+
+The application connects to the MTA's GTFS-Realtime feeds to retrieve real-time subway information. It processes this data to display upcoming train arrivals for each selected station, organized by line and direction.
+
+## Configuration
+
+Station and route data are loaded from configuration files in the project. The application refreshes automatically every 30 seconds to keep the information current.
 
 ## Next Steps
 
 1. Integrate with LED matrix display
 2. Add mobile app for remote control
-3. Implement real-time updates using WebSocket 
+3. Implement real-time updates using WebSocket
+
+## License
+
+[MIT License](LICENSE)
+
+## Acknowledgements
+
+- MTA for providing real-time data feeds
+- The GTFS-Realtime specification
+- NYC Transit for the iconic subway line styling
 
 # MTA GTFS-realtime Feed Structure
 

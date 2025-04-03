@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import requests
 from datetime import datetime, timezone
 import logging
@@ -200,14 +200,20 @@ def index():
     
     # Get data for each station and merge train data
     for station_id in selected_stations:
-        station_data = get_train_status(station_id)
-        
-        # Merge train data
-        if 'trains' in station_data:
-            for route, route_data in station_data['trains'].items():
-                if route not in train_data['trains']:
-                    train_data['trains'][route] = route_data
+        if is_valid_station(station_id):
+            station_data = get_train_status(station_id)
+            
+            # Merge train data
+            if 'trains' in station_data:
+                for route, route_data in station_data['trains'].items():
+                    if route not in train_data['trains']:
+                        train_data['trains'][route] = route_data
     
+    # Check if this is an AJAX request
+    if request.args.get('ajax') == 'true':
+        return jsonify(train_data)
+    
+    # Regular request returns HTML
     return render_template('index.html', 
                           train_data=train_data, 
                           stations=STATIONS, 

@@ -1,0 +1,6 @@
+2025-04-03 00:04:52,013 - DEBUG - Starting new HTTPS connection (1): api-endpoint.mta.info:443
+2025-04-03 00:04:52,146 - DEBUG - https://api-endpoint.mta.info:443 "GET /Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm HTTP/1.1" 200 12690
+2025-04-03 00:04:52,151 - DEBUG - Found routes in feed bdfm: ['F', 'M']
+2025-04-03 00:04:52,152 - DEBUG - Route F - Uptown: ['3 min', '12 min', '25 min']
+2025-04-03 00:04:52,152 - DEBUG - Route F - Downtown: ['8 min', '23 min', '35 min']
+2025-04-03 00:04:52,160 - INFO - 127.0.0.1 - - [03/Apr/2025 00:04:52] "GET /?stations=101&stations=A25&stations=R15&stations=723&stations=D19 HTTP/1.1" 200 -

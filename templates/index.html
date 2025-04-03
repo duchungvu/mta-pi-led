@@ -35,11 +35,96 @@
         h1 {
             font-size: 1.75rem;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .mta-logo {
+            width: 1.8rem;
+            height: 1.8rem;
+            border-radius: 50%;
+            background-color: #0039A6;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.7rem;
         }
         
         .timestamp {
             font-size: 0.875rem;
             color: #6c757d;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .time-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+                transform: scale(0.8);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+            100% {
+                opacity: 0.5;
+                transform: scale(0.8);
+            }
+        }
+        
+        /* Now indicator for imminent trains */
+        .arrival-now {
+            font-weight: 700;
+            background-color: #dc3545;
+            color: white;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            animation: blink 1.5s infinite;
+        }
+        
+        .arrival-soon {
+            font-weight: 700;
+            color: #fd7e14;
+        }
+        
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        
+        /* Station Card Footer with Refresh */
+        .station-footer {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 1rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #dee2e6;
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
+        .station-refresh {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            cursor: pointer;
+        }
+        
+        .station-refresh:hover {
+            color: #0d6efd;
         }
         
         /* Station Controls */
@@ -243,7 +328,7 @@
         /* Arrivals */
         .arrivals-container {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
             gap: 1rem;
             justify-content: center;
         }
@@ -253,7 +338,7 @@
             border-radius: 6px;
             padding: 1rem;
             margin: 0 auto;
-            max-width: 280px;
+            max-width: 320px;
             width: 100%;
         }
         
@@ -281,12 +366,13 @@
         
         .directions-container {
             display: flex;
-            gap: 1rem;
+            gap: 1.5rem;
             justify-content: space-between;
         }
         
         .direction-column {
             flex: 1;
+            min-width: 80px;
         }
         
         .direction-header {
@@ -304,10 +390,11 @@
             letter-spacing: 0.05em;
             margin-bottom: 0.5rem;
             text-align: center;
-            padding: 0.25rem 0;
+            padding: 0.5rem 0;
             background-color: rgba(0,0,0,0.05);
             border-radius: 4px;
             width: 100%;
+            white-space: nowrap;
         }
         
         .arrival-times {
@@ -381,8 +468,14 @@
 </head>
 <body>
     <header>
-        <h1>MTA Train Status</h1>
-        <div class="timestamp">{{ train_data.timestamp }}</div>
+        <h1>
+            <div class="mta-logo">MTA</div>
+            Train Status
+        </h1>
+        <div class="timestamp">
+            <div class="time-indicator"></div>
+            {{ train_data.timestamp }}
+        </div>
     </header>
 
     <div class="station-controls">
@@ -469,7 +562,7 @@
                                                     <ul class="arrival-times">
                                                         {% for arrival in train_data.trains[line][direction].next_arrivals %}
                                                             <li class="arrival-item">
-                                                                <span class="arrival-time">{{ arrival }}</span>
+                                                                <span class="arrival-time {% if arrival == 'Now' %}arrival-now{% elif 'min' in arrival and arrival.split(' ')[0]|int < 3 %}arrival-soon{% endif %}">{{ arrival }}</span>
                                                             </li>
                                                         {% endfor %}
                                                     </ul>
@@ -481,6 +574,13 @@
                             {% endif %}
                         {% endfor %}
                     </div>
+                    
+                    <div class="station-footer">
+                        <div class="station-refresh" onclick="refreshStation('{{ station_id }}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                            Refresh this station
+                        </div>
+                    </div>
                 </div>
                 {% endif %}
             {% endfor %}
@@ -488,16 +588,25 @@
     {% endif %}
 
     <div class="actions">
-        <button onclick="window.location.reload()">
-            Refresh
+        <button class="refresh-button" onclick="window.location.reload()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh All
         </button>
     </div>
 
     <script>
+        // Store currently displayed stations
+        let displayedStations = new Set(JSON.parse('{{ selected_stations|tojson }}'));
+        
         // Station Search Functionality
         const stationSearch = document.getElementById('stationSearch');
         const stationOptions = document.getElementById('stationOptions');
         const stationOptionElements = document.querySelectorAll('.station-option');
+        const currentStations = document.getElementById('currentStations');
+        const stationsContainer = document.querySelector('.stations-container');
+        
+        // Station data from server
+        const allStations = JSON.parse('{{ stations|tojson }}');
         
         // Show options when clicking on search input
         stationSearch.addEventListener('focus', function() {
@@ -539,12 +648,12 @@
                 stationSearch.value = stationName;
                 stationOptions.style.display = 'none';
                 
-                // Add the station immediately
-                addStation(stationId);
+                // Add the station without reload
+                addStationWithoutReload(stationId);
             });
         });
         
-        // Function to add a station
+        // Function to add a station with page reload (fallback)
         function addStation(stationId) {
             if (!stationId) return;
             
@@ -557,6 +666,207 @@
                 urlParams.append('stations', stationId);
                 window.location.search = urlParams.toString();
             }
+        }
+        
+        // Function to add a station without page reload
+        async function addStationWithoutReload(stationId) {
+            if (!stationId || displayedStations.has(stationId)) return;
+            
+            // Add to displayed stations
+            displayedStations.add(stationId);
+            
+            // Update the URL (without reloading)
+            updateUrlParams();
+            
+            // Add station chip
+            addStationChip(stationId);
+            
+            try {
+                // Get train data for this station
+                const fullUrl = window.location.origin + window.location.pathname + `?stations=${stationId}&ajax=true`;
+                const response = await fetch(fullUrl);
+                if (!response.ok) throw new Error('Network error');
+                const data = await response.json();
+                
+                // Create and add station card
+                addStationCard(stationId, data);
+            } catch (error) {
+                console.error('Error fetching station data:', error);
+                // Fallback to reload if fetch fails
+                addStation(stationId);
+            }
+        }
+        
+        // Function to remove a station without page reload
+        function removeStationWithoutReload(stationId) {
+            if (!stationId || !displayedStations.has(stationId)) return;
+            
+            // Remove from displayed stations
+            displayedStations.delete(stationId);
+            
+            // Update URL (without reloading)
+            updateUrlParams();
+            
+            // Remove station chip
+            document.querySelector(`.station-chip[data-station-id="${stationId}"]`)?.remove();
+            
+            // Remove station card
+            document.querySelector(`.station-card[data-station-id="${stationId}"]`)?.remove();
+        }
+        
+        // Update URL without reloading
+        function updateUrlParams() {
+            const urlParams = new URLSearchParams();
+            displayedStations.forEach(stationId => {
+                urlParams.append('stations', stationId);
+            });
+            
+            // Update URL without reloading
+            history.pushState(null, '', `?${urlParams.toString()}`);
+        }
+        
+        // Add station chip to the current stations list
+        function addStationChip(stationId) {
+            const station = allStations[stationId];
+            if (!station) return;
+            
+            const chip = document.createElement('div');
+            chip.className = 'station-chip';
+            chip.dataset.stationId = stationId;
+            
+            // Line bubbles
+            const lineContainer = document.createElement('div');
+            lineContainer.className = 'chip-line-bubbles';
+            
+            station.lines.forEach(line => {
+                const bubble = document.createElement('div');
+                bubble.className = `chip-line-bubble line-${line}`;
+                bubble.textContent = line;
+                lineContainer.appendChild(bubble);
+            });
+            
+            // Station name
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'station-name';
+            nameSpan.textContent = station.name;
+            
+            chip.appendChild(lineContainer);
+            chip.appendChild(nameSpan);
+            currentStations.appendChild(chip);
+        }
+        
+        // Add station card to the stations container
+        function addStationCard(stationId, data) {
+            const station = allStations[stationId];
+            if (!station) return;
+            
+            // Create card container
+            const card = document.createElement('div');
+            card.className = 'station-card';
+            card.dataset.stationId = stationId;
+            
+            // Card header with station name and delete button
+            const header = document.createElement('div');
+            header.className = 'station-header';
+            
+            const info = document.createElement('div');
+            info.className = 'station-info';
+            
+            const title = document.createElement('div');
+            title.className = 'station-title';
+            title.textContent = station.name;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.onclick = () => removeStationWithoutReload(stationId);
+            
+            info.appendChild(title);
+            header.appendChild(info);
+            header.appendChild(deleteBtn);
+            card.appendChild(header);
+            
+            // Create arrivals container
+            const arrivalsContainer = document.createElement('div');
+            arrivalsContainer.className = 'arrivals-container';
+            
+            // Create arrival cards for each line
+            station.lines.forEach(line => {
+                if (data.trains && data.trains[line]) {
+                    const arrivalCard = createArrivalCard(line, data.trains[line]);
+                    arrivalsContainer.appendChild(arrivalCard);
+                }
+            });
+            
+            card.appendChild(arrivalsContainer);
+            stationsContainer.appendChild(card);
+        }
+        
+        // Create an arrival card for a line
+        function createArrivalCard(line, lineData) {
+            const card = document.createElement('div');
+            card.className = `arrival-card card-line-${line}`;
+            
+            // Header with line bubble
+            const header = document.createElement('div');
+            header.className = 'arrival-header';
+            
+            const bubble = document.createElement('div');
+            bubble.className = `line-bubble line-${line}`;
+            bubble.textContent = line;
+            
+            header.appendChild(bubble);
+            card.appendChild(header);
+            
+            // Directions container
+            const directionsContainer = document.createElement('div');
+            directionsContainer.className = 'directions-container';
+            
+            // Create columns for uptown and downtown
+            ['uptown', 'downtown'].forEach(direction => {
+                if (lineData[direction] && direction !== 'color' && direction !== 'text_color' && direction !== 'name') {
+                    const column = document.createElement('div');
+                    column.className = 'direction-column';
+                    
+                    const dirTitle = document.createElement('div');
+                    dirTitle.className = 'direction-title';
+                    dirTitle.textContent = direction.charAt(0).toUpperCase() + direction.slice(1);
+                    
+                    const arrivalsList = document.createElement('ul');
+                    arrivalsList.className = 'arrival-times';
+                    
+                    // Add arrival times
+                    lineData[direction].next_arrivals.forEach(arrival => {
+                        const item = document.createElement('li');
+                        item.className = 'arrival-item';
+                        
+                        const time = document.createElement('span');
+                        time.className = 'arrival-time';
+                        
+                        // Add special styling for imminent trains
+                        if (arrival === 'Now') {
+                            time.classList.add('arrival-now');
+                        } else if (arrival.includes('min')) {
+                            const minutes = parseInt(arrival.split(' ')[0]);
+                            if (minutes < 3) {
+                                time.classList.add('arrival-soon');
+                            }
+                        }
+                        
+                        time.textContent = arrival;
+                        
+                        item.appendChild(time);
+                        arrivalsList.appendChild(item);
+                    });
+                    
+                    column.appendChild(dirTitle);
+                    column.appendChild(arrivalsList);
+                    directionsContainer.appendChild(column);
+                }
+            });
+            
+            card.appendChild(directionsContainer);
+            return card;
         }
         
         // Handle form submission (now only triggered if someone presses Enter)
@@ -576,32 +886,124 @@
             });
             
             if (matchedStationId) {
-                addStation(matchedStationId);
+                addStationWithoutReload(matchedStationId);
             }
         });
         
-        // Handle removing stations
+        // Replace the old remove function
         function removeStation(stationId) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const stations = urlParams.getAll('stations');
-            
-            // Clear all stations
-            urlParams.delete('stations');
-            
-            // Add back all except the one to remove
-            stations.forEach(station => {
-                if (station !== stationId) {
-                    urlParams.append('stations', station);
-                }
-            });
-            
-            window.location.search = urlParams.toString();
+            removeStationWithoutReload(stationId);
         }
         
         // Auto-refresh every 30 seconds
         setTimeout(function() {
             window.location.reload();
         }, 30000);
+
+        // Function to refresh a single station
+        async function refreshStation(stationId) {
+            if (!stationId || !displayedStations.has(stationId)) return;
+            
+            try {
+                // Get updated train data for this station
+                const fullUrl = window.location.origin + window.location.pathname + `?stations=${stationId}&ajax=true`;
+                const response = await fetch(fullUrl);
+                if (!response.ok) throw new Error('Network error');
+                const data = await response.json();
+                
+                // Remove existing station card
+                const existingCard = document.querySelector(`.station-card[data-station-id="${stationId}"]`);
+                if (existingCard) {
+                    // Save the position to add the new card
+                    const parent = existingCard.parentNode;
+                    const nextSibling = existingCard.nextSibling;
+                    
+                    // Remove old card
+                    existingCard.remove();
+                    
+                    // Create new card
+                    const newCard = createStationCard(stationId, data);
+                    
+                    // Insert at same position
+                    if (nextSibling) {
+                        parent.insertBefore(newCard, nextSibling);
+                    } else {
+                        parent.appendChild(newCard);
+                    }
+                    
+                    // Add flash effect to indicate refresh
+                    setTimeout(() => {
+                        newCard.style.transition = 'background-color 1s';
+                        newCard.style.backgroundColor = '#e6f7ff';
+                        setTimeout(() => {
+                            newCard.style.backgroundColor = 'white';
+                        }, 1000);
+                    }, 100);
+                }
+            } catch (error) {
+                console.error('Error refreshing station:', error);
+            }
+        }
+        
+        // Create a full station card
+        function createStationCard(stationId, data) {
+            const station = allStations[stationId];
+            if (!station) return document.createElement('div'); // empty div for safety
+            
+            // Create card container
+            const card = document.createElement('div');
+            card.className = 'station-card';
+            card.dataset.stationId = stationId;
+            
+            // Card header with station name and delete button
+            const header = document.createElement('div');
+            header.className = 'station-header';
+            
+            const info = document.createElement('div');
+            info.className = 'station-info';
+            
+            const title = document.createElement('div');
+            title.className = 'station-title';
+            title.textContent = station.name;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.onclick = () => removeStationWithoutReload(stationId);
+            
+            info.appendChild(title);
+            header.appendChild(info);
+            header.appendChild(deleteBtn);
+            card.appendChild(header);
+            
+            // Create arrivals container
+            const arrivalsContainer = document.createElement('div');
+            arrivalsContainer.className = 'arrivals-container';
+            
+            // Create arrival cards for each line
+            station.lines.forEach(line => {
+                if (data.trains && data.trains[line]) {
+                    const arrivalCard = createArrivalCard(line, data.trains[line]);
+                    arrivalsContainer.appendChild(arrivalCard);
+                }
+            });
+            
+            card.appendChild(arrivalsContainer);
+            
+            // Add footer with refresh button
+            const footer = document.createElement('div');
+            footer.className = 'station-footer';
+            
+            const refreshBtn = document.createElement('div');
+            refreshBtn.className = 'station-refresh';
+            refreshBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg> Refresh this station';
+            refreshBtn.onclick = () => refreshStation(stationId);
+            
+            footer.appendChild(refreshBtn);
+            card.appendChild(footer);
+            
+            return card;
+        }
     </script>
 </body>
 </html> 

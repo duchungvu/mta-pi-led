@@ -211,13 +211,17 @@ def index():
     
     # Check if this is an AJAX request
     if request.args.get('ajax') == 'true':
-        return jsonify(train_data)
+        return jsonify({
+            'station_data': train_data,
+            'stations': {station_id: STATIONS[station_id] for station_id in selected_stations if station_id in STATIONS}
+        })
     
-    # Regular request returns HTML
+    # Render full page for normal requests
     return render_template('index.html', 
-                          train_data=train_data, 
-                          stations=STATIONS, 
-                          selected_stations=selected_stations)
+        train_data=train_data, 
+        stations=STATIONS, 
+        selected_stations=selected_stations
+    )
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True) 
+    app.run(host='0.0.0.0', port=5001, debug=True) 

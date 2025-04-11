@@ -69,6 +69,74 @@ To share the app with friends outside your network:
 3. Share the HTTPS URL provided by ngrok with your friends
 4. Note: Free tier ngrok URLs expire after a few hours
 
+## Hosting on Raspberry Pi
+
+### Installation on Raspberry Pi
+
+1. **Update system packages**:
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   ```
+
+2. **Install Python and dependencies**:
+   ```bash
+   sudo apt install -y python3-pip python3-venv
+   ```
+
+3. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/mta-pi-led.git
+   cd mta-pi-led
+   ```
+
+4. **Set up a virtual environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+5. **Install required packages**:
+   ```bash
+   pip install flask requests gtfs-realtime-bindings protobuf
+   ```
+
+### Auto-start on Boot
+
+Create a systemd service to run the app automatically on startup:
+
+1. Create a systemd service file:
+   ```bash
+   sudo nano /etc/systemd/system/mta-status.service
+   ```
+
+2. Add the following content (replace USERNAME with your actual username):
+   ```
+   [Unit]
+   Description=MTA Train Status App
+   After=network.target
+
+   [Service]
+   User=USERNAME
+   WorkingDirectory=/home/USERNAME/mta-pi-led
+   ExecStart=/home/USERNAME/mta-pi-led/venv/bin/python app.py
+   Restart=always
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start the service:
+   ```bash
+   sudo systemctl enable mta-status.service
+   sudo systemctl start mta-status.service
+   ```
+
+4. Check status:
+   ```bash
+   sudo systemctl status mta-status.service
+   ```
+
 ## Using the Application
 
 ### Adding Stations

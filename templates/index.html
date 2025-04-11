@@ -639,7 +639,7 @@
     {% endif %}
 
     <div class="actions">
-        <button class="refresh-button" onclick="window.location.reload()">
+        <button class="refresh-button">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             Refresh All
         </button>
@@ -658,6 +658,39 @@
         
         // Station data from server
         const allStations = JSON.parse('{{ stations|tojson }}');
+        
+        // Auto-refresh data every 30 seconds without page reload
+        setInterval(function() {
+            refreshAllStationsData();
+            
+            // Update timestamp with current time
+            const timestamp = document.querySelector('.timestamp');
+            if (timestamp) {
+                const now = new Date();
+                const formattedTime = now.toLocaleString();
+                timestamp.innerHTML = `<div class="time-indicator"></div>Data refreshed at ${formattedTime}`;
+            }
+        }, 30000);
+        
+        // Function to refresh all stations data without page reload
+        async function refreshAllStationsData() {
+            // Don't try to refresh if no stations are displayed
+            if (displayedStations.size === 0) return;
+            
+            // For each displayed station, refresh its data
+            for (const stationId of displayedStations) {
+                await refreshStation(stationId, false); // false means don't show visual effect
+            }
+            
+            // Show a subtle indicator that data was refreshed
+            const refreshBtn = document.querySelector('.refresh-button');
+            if (refreshBtn) {
+                refreshBtn.classList.add('refresh-active');
+                setTimeout(() => {
+                    refreshBtn.classList.remove('refresh-active');
+                }, 1000);
+            }
+        }
         
         // Show options when clicking on search input
         stationSearch.addEventListener('focus', function() {
@@ -739,8 +772,17 @@
                 if (!response.ok) throw new Error('Network error');
                 const data = await response.json();
                 
+                // Extract the station data from the response
+                const stationData = data.station_data;
+                
                 // Create and add station card
-                addStationCard(stationId, data);
+                addStationCard(stationId, stationData);
+                
+                // Remove welcome message if it exists
+                const welcomeMessage = document.querySelector('.welcome-message');
+                if (welcomeMessage) {
+                    welcomeMessage.remove();
+                }
             } catch (error) {
                 console.error('Error fetching station data:', error);
                 // Fallback to reload if fetch fails
@@ -974,13 +1016,8 @@
             removeStationWithoutReload(stationId);
         }
         
-        // Auto-refresh every 30 seconds
-        setTimeout(function() {
-            window.location.reload();
-        }, 30000);
-
         // Function to refresh a single station
-        async function refreshStation(stationId) {
+        async function refreshStation(stationId, showVisualEffect = true) {
             if (!stationId || !displayedStations.has(stationId)) return;
             
             try {
@@ -989,6 +1026,9 @@
                 const response = await fetch(fullUrl);
                 if (!response.ok) throw new Error('Network error');
                 const data = await response.json();
+                
+                // Extract the station data from the response
+                const stationData = data.station_data;
                 
                 // Remove existing station card
                 const existingCard = document.querySelector(`.station-card[data-station-id="${stationId}"]`);
@@ -1001,7 +1041,7 @@
                     existingCard.remove();
                     
                     // Create new card
-                    const newCard = createStationCard(stationId, data);
+                    const newCard = createStationCard(stationId, stationData);
                     
                     // Insert at same position
                     if (nextSibling) {
@@ -1010,14 +1050,16 @@
                         parent.appendChild(newCard);
                     }
                     
-                    // Add flash effect to indicate refresh
-                    setTimeout(() => {
-                        newCard.style.transition = 'background-color 1s';
-                        newCard.style.backgroundColor = '#e6f7ff';
+                    // Add flash effect to indicate refresh if requested
+                    if (showVisualEffect) {
                         setTimeout(() => {
-                            newCard.style.backgroundColor = 'white';
-                        }, 1000);
-                    }, 100);
+                            newCard.style.transition = 'background-color 1s';
+                            newCard.style.backgroundColor = '#e6f7ff';
+                            setTimeout(() => {
+                                newCard.style.backgroundColor = 'white';
+                            }, 1000);
+                        }, 100);
+                    }
                 }
             } catch (error) {
                 console.error('Error refreshing station:', error);
@@ -1083,6 +1125,25 @@
             
             return card;
         }
+        
+        // Update refresh button to use the new function instead of page reload
+        document.querySelector('.refresh-button').onclick = function() {
+            refreshAllStationsData();
+            return false; // Prevent default action
+        };
+        
+        // Add a style for refresh animation
+        const style = document.createElement('style');
+        style.textContent = `
+            .refresh-active {
+                animation: spin 1s ease-in-out;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html> 

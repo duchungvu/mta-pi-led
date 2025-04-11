@@ -1,6 +1,1 @@
-2025-04-03 00:35:15,039 - DEBUG - Starting new HTTPS connection (1): api-endpoint.mta.info:443
-2025-04-03 00:35:15,176 - DEBUG - https://api-endpoint.mta.info:443 "GET /Dataservice/mtagtfsfeeds/nyct%2Fgtfs HTTP/1.1" 200 16160
-2025-04-03 00:35:15,181 - DEBUG - Found routes in feed 1234567: ['7']
-2025-04-03 00:35:15,181 - DEBUG - Route 7 - Uptown: ['8 min', '15 min']
-2025-04-03 00:35:15,181 - DEBUG - Route 7 - Downtown: ['8 min', '21 min']
-2025-04-03 00:35:15,192 - INFO - 127.0.0.1 - - [03/Apr/2025 00:35:15] "GET /?stations=101&stations=A25&stations=R15&stations=723 HTTP/1.1" 200 -
+2025-04-11 00:11:20,897 - DEBUG - Starting new HTTPS connection (1): api-endpoint.mta.info:443

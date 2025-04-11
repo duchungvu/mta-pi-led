@@ -37,4 +37,4 @@ wheels/
 # Logs
 *.log
 logs/
-log/ 
+log/ mta_debug.log

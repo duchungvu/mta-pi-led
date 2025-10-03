@@ -16,15 +16,25 @@ ROUTES = load_route_data()
 
 def clear_log_file():
     # Clear the log file
-    with open('mta_debug.log', 'w') as f:
-        f.write('')
+    try:
+        with open('../logs/mta_debug.log', 'w') as f:
+            f.write('')
+    except PermissionError:
+        pass  # Skip if can't write to log
 
 def setup_logging():
-    logging.basicConfig(
-        filename='mta_debug.log',
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    try:
+        logging.basicConfig(
+            filename='../logs/mta_debug.log',
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    except PermissionError:
+        # Fall back to console logging if can't write to file
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
 
 def initialize_train_status(selected_station):
     if not is_valid_station(selected_station):

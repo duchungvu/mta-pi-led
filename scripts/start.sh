@@ -5,6 +5,7 @@ cd /home/hung/mta-pi-led
 source venv/bin/activate
 
 # Start Flask app in background
+cd src
 python app.py &
 FLASK_PID=$!
 

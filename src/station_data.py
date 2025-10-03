@@ -8,10 +8,10 @@ def load_station_data():
     global _station_data
     if _station_data is None:
         try:
-            with open('mta_stations.json', 'r') as f:
+            with open('../data/mta_stations.json', 'r') as f:
                 _station_data = json.load(f)
         except FileNotFoundError:
-            raise Exception("Station data file (mta_stations.json) not found. Please run create_station_db.py first.")
+            raise Exception("Station data file (../data/mta_stations.json) not found. Please run create_station_db.py first.")
     return _station_data
 
 def is_valid_station(station_id):

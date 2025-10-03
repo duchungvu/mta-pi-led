@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # Read stops.txt
 stations = {}
-with open('gtfs_subway/stops.txt', 'r') as f:
+with open('../data/gtfs_subway/stops.txt', 'r') as f:
     reader = csv.DictReader(f)
     for row in reader:
         # Only process parent stations (location_type == 1)
@@ -21,7 +21,7 @@ with open('gtfs_subway/stops.txt', 'r') as f:
 
 # Read MTA_SUBWAYS station csv to get line information
 station_lines = defaultdict(set)
-with open('examples/MTA_Subway_Stations_20250330.csv', 'r') as f:
+with open('../examples/MTA_Subway_Stations_20250330.csv', 'r') as f:
     reader = csv.DictReader(f)
     for row in reader:
         station_id = row['GTFS Stop ID']
@@ -35,5 +35,7 @@ for station_id, station_data in stations.items():
     station_data['lines'] = sorted(list(station_lines[station_id]))
 
 # Write to JSON file
-with open('mta_stations.json', 'w') as f:
-    json.dump(stations, f, indent=2) 
+with open('../data/mta_stations.json', 'w') as f:
+    json.dump(stations, f, indent=2)
+
+print(f"Station database created with {len(stations)} stations saved to ../data/mta_stations.json") 

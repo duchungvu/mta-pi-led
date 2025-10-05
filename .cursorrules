@@ -1,0 +1,99 @@
+# MTA-Pi-LED Project Cursor Rules
+
+## Project Overview
+This project integrates real-time MTA (Metropolitan Transportation Authority) data with HUB75 LED matrix displays using Raspberry Pi. The system fetches live train arrival data and displays it on a 64x64 P4 LED panel using the rpi-rgb-led-matrix library.
+
+## Hardware Configuration
+- LED Panel: 64x32 P4 single panel
+- Raspberry Pi: Model 3 with RGB Matrix Bonnet/HAT
+- Connection: HUB75 interface via Adafruit RGB Matrix Bonnet
+- Development: Laptop connected to Pi via rsync for code synchronization
+
+## Development Workflow Rules
+
+### 1. Hardware-First Approach
+- Always start with basic LED functionality tests before implementing complex features
+- Verify hardware compatibility with simple examples from rpi-rgb-led-matrix
+- Test LED panel operation before integrating MTA data
+- Use step-by-step hardware validation: basic examples → library installation → Python bindings → custom display modules
+
+### 2. Incremental Integration Strategy
+When integrating new features, follow this sequence:
+1. **Hardware Verification**: Test LED panel with basic examples
+2. **Library Setup**: Install and configure rpi-rgb-led-matrix with Python bindings
+3. **Display Module Creation**: Build modular LED display components
+4. **Data Integration**: Connect existing MTA data fetching to LED output
+5. **Testing & Optimization**: Refine display layouts and performance
+
+### 3. Requirements Gathering Protocol
+Before making assumptions about hardware or software capabilities:
+- Ask specific questions about LED panel specifications (size, type, chaining)
+- Verify Raspberry Pi model and OS version
+- Confirm hardware connection methods (direct GPIO vs adapter boards)
+- Establish current installation status of required libraries
+- Understand project goals and display preferences
+- Validate development workflow (rsync, SSH access)
+
+### 4. MTA Data Display Priorities
+Focus on essential information first:
+- Station names and route identification
+- Route colors (matching MTA branding)
+- Real-time arrival times
+- Clear, readable font display on 64x64 resolution
+- Efficient data refresh cycles
+
+### 5. Code Organization Standards
+- Maintain separation between MTA data fetching and LED display logic
+- Create modular components for different display modes
+- Keep existing web application functionality intact
+- Use configuration files for LED-specific settings
+- Implement proper error handling for hardware failures
+
+### 6. Development Environment Rules
+- Test changes locally when possible before syncing to Pi
+- Use rsync for efficient code deployment to Raspberry Pi
+- Maintain SSH connectivity for remote debugging
+- Create backup copies before major hardware library installations
+- Document any Pi-specific configuration changes
+
+### 7. Display Design Principles
+- Optimize for 64x64 pixel resolution constraints
+- Use high contrast colors for LED visibility
+- Implement appropriate font sizes for readability
+- Consider refresh rates for smooth updates
+- Design for continuous operation scenarios
+
+### 8. Error Handling and Debugging
+- Implement graceful fallbacks if LED hardware fails
+- Log both MTA API and LED display errors separately
+- Provide clear error messages for hardware connectivity issues
+- Create test modes for debugging without live MTA data
+- Monitor system performance on resource-constrained Pi hardware
+
+### 9. Library Management
+- Pin specific versions of rpi-rgb-led-matrix for stability
+- Document exact Python binding requirements
+- Test library compatibility with existing MTA data fetching code
+- Maintain separate requirements for Pi vs development environment
+
+### 10. Future Scalability Considerations
+- Design display modules to support multiple panel configurations
+- Keep MTA data structures flexible for different display formats
+- Plan for potential hardware upgrades (different Pi models, larger displays)
+- Consider power management for continuous operation
+
+## Code Style and Architecture
+- Use clear, descriptive variable names for hardware-specific code
+- Comment hardware configuration parameters thoroughly
+- Separate concerns: data fetching, data processing, display rendering
+- Implement proper cleanup for LED matrix resources
+- Use type hints for better code maintainability
+
+## Testing Strategy
+- Always test basic LED functionality before complex integrations
+- Create isolated test scripts for different display components
+- Validate MTA data parsing separately from LED display
+- Test error conditions and recovery scenarios
+- Verify performance on actual Pi hardware, not just development machine
+
+This project requires careful attention to hardware limitations, real-time data processing, and clear visual communication within the constraints of LED matrix displays.

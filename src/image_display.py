@@ -25,13 +25,13 @@ class Config:
         """LED matrix hardware settings"""
         ROWS = 32
         COLS = 64
-        BRIGHTNESS = 25
+        BRIGHTNESS = 20
         MAPPING = 'adafruit-hat'
         GPIO_SLOWDOWN = 5
     
     class Files:
         """File paths for fonts and icons"""
-        FONT = '../fonts/tom-thumb.bdf'
+        FONT = '../fonts/4x6.bdf'
         ROUTE_ICON = '../icons/F_black.png'
     
     class Layout:
@@ -41,11 +41,21 @@ class Config:
         
         STATION_NAME_POSITION = (1, 6)
         
-        UPTOWN_LABEL_POSITION = (24, 6)
-        UPTOWN_TIMES_POSITION = (24, 11)
+        # Uptown direction
+        UPTOWN_LABEL_POSITION = (22, 6)
+        UPTOWN_TIME_1_POSITION = (22, 12)
+        UPTOWN_TIME_2_POSITION = (36, 12)
+        UPTOWN_TIME_3_POSITION = (50, 12)
         
-        DOWNTOWN_LABEL_POSITION = (24, 18)
-        DOWNTOWN_TIMES_POSITION = (24, 23)
+        # Downtown direction
+        DOWNTOWN_LABEL_POSITION = (22, 19)
+        DOWNTOWN_TIME_1_POSITION = (22, 25)
+        DOWNTOWN_TIME_2_POSITION = (36, 25)
+        DOWNTOWN_TIME_3_POSITION = (50, 25)
+        
+        # Time box dimensions
+        TIME_BOX_WIDTH = 12   # 3 chars × 4px per char = 12px
+        TIME_BOX_HEIGHT = 6   # Font height
     
     class Colors:
         """RGB color definitions"""
@@ -55,9 +65,10 @@ class Config:
     
     class Display:
         """Display behavior settings"""
-        MAX_ARRIVALS = 3
+        ARRIVALS_PER_DIRECTION = 3  # Show 3 arrival times per direction
         STATION_NAME_MAX_LENGTH = 5
         REFRESH_INTERVAL = 30
+        TIME_MAX_CHARS = 3  # Max characters per time box
     
     class MTA:
         """MTA station and route defaults"""
@@ -70,6 +81,7 @@ class MTALEDDisplay:
     
     def __init__(self, station_id: str = Config.MTA.STATION):
         self.station_id = self._validate_station(station_id)
+        self.static_drawn = False  # Track if static elements are drawn
         
         # Initialize hardware
         self.matrix = self._setup_matrix()
@@ -122,11 +134,19 @@ class MTALEDDisplay:
             print(f"✗ Error displaying route icon: {e}")
             return False
     
-    def _format_arrival_times(self, times: List[str]) -> List[str]:
-        """Format arrival times for display"""
-        return [t.replace(' min', 'm').replace('Now', 'NOW')[:3] 
-                for t in times[:Config.Display.MAX_ARRIVALS] 
-                if t and t != 'No data']
+    def _format_single_time(self, time_str: str) -> str:
+        """Format a single arrival time to fit in 3 characters"""
+        if not time_str or time_str == 'No data':
+            return '---'
+        
+        # Convert "2 min" → "2m", "Now" → "NOW"
+        formatted = time_str.replace(' min', 'm').replace('Now', 'NOW')
+        
+        # If longer than 3 chars (e.g., "127m"), remove the 'm'
+        if len(formatted) > Config.Display.TIME_MAX_CHARS:
+            formatted = formatted.replace('m', '')[:Config.Display.TIME_MAX_CHARS]
+        
+        return formatted
     
     def _draw_text(self, text: str, position: Tuple[int, int], color: Tuple[int, int, int]):
         """Draw text at specified position with color"""
@@ -162,20 +182,44 @@ class MTALEDDisplay:
         
         # Station name (e.g., "57th St")
         station_name = get_station_name(self.station_id)[:Config.Display.STATION_NAME_MAX_LENGTH]
+        print(f"Station name: {station_name}")
         self._draw_text(station_name, Config.Layout.STATION_NAME_POSITION, Config.Colors.WHITE)
     
-    def _draw_direction(self, direction_name: str, times: List[str], 
-                       label_position: Tuple[int, int], times_position: Tuple[int, int],
-                       times_color: Tuple[int, int, int]):
-        """Draw a direction section: direction name + next 3 arrivals"""
-        # Direction label (e.g., "UPTOWN")
-        self._draw_text(direction_name, label_position, Config.Colors.WHITE)
+    def _clear_time_box(self, position: Tuple[int, int]):
+        """Clear a single time box (12x6 pixels for 3 characters)"""
+        x, y = position
+        # BDF fonts: y is baseline, text appears ABOVE it
+        # For 4x6 font: FONT_ASCENT = 5, FONT_DESCENT = 1
+        # Clear from (y - 5) to (y + 1) = 6 pixels total
+        y_start = y - 5  # Start 5 pixels above baseline
         
-        # Arrival times (e.g., "2m 5m 8m")
-        formatted_times = self._format_arrival_times(times)
-        if formatted_times:
-            times_text = ' '.join(formatted_times)
-            self._draw_text(times_text, times_position, times_color)
+        for dy in range(Config.Layout.TIME_BOX_HEIGHT):
+            for dx in range(Config.Layout.TIME_BOX_WIDTH):
+                if x + dx < Config.Hardware.COLS and y_start + dy >= 0 and y_start + dy < Config.Hardware.ROWS:
+                    self.canvas.SetPixel(x + dx, y_start + dy, 0, 0, 0)
+    
+    def _draw_direction_label(self, direction_name: str, label_position: Tuple[int, int]):
+        """Draw direction label (static - drawn once)"""
+        self._draw_text(direction_name, label_position, Config.Colors.WHITE)
+    
+    def _draw_time_box(self, time_str: str, position: Tuple[int, int], color: Tuple[int, int, int]):
+        """Draw a single arrival time in its box (clear + draw)"""
+        # Clear the box first
+        self._clear_time_box(position)
+        
+        # Format and draw the time
+        formatted_time = self._format_single_time(time_str)
+        self._draw_text(formatted_time, position, color)
+    
+    def _draw_direction_times(self, times: List[str], box_positions: List[Tuple[int, int]], 
+                             color: Tuple[int, int, int]):
+        """Draw all arrival times for one direction (updates 3 boxes)"""
+        # Ensure we have exactly 3 times (pad with empty if needed)
+        padded_times = (times + [''] * Config.Display.ARRIVALS_PER_DIRECTION)[:Config.Display.ARRIVALS_PER_DIRECTION]
+        
+        # Draw each time in its own box
+        for time_str, position in zip(padded_times, box_positions):
+            self._draw_time_box(time_str, position, color)
     
     def display_route(self, route: str, uptown_times: List[str], downtown_times: List[str]):
         """Display complete MTA board with all components"""
@@ -183,22 +227,34 @@ class MTALEDDisplay:
             print("✗ No font available, cannot display")
             return
         
-        self.canvas.Clear()
+        # Draw static elements only on first call
+        if not self.static_drawn:
+            self.canvas.Clear()
+            
+            # Static: Station Info (line logo + station name)
+            self._draw_station_info(route)
+            
+            # Static: Direction labels
+            self._draw_direction_label('UPTOWN', Config.Layout.UPTOWN_LABEL_POSITION)
+            self._draw_direction_label('DOWNTOWN', Config.Layout.DOWNTOWN_LABEL_POSITION)
+            
+            self.static_drawn = True
+            print("✓ Static elements drawn")
         
-        # Station Info (line logo + station name)
-        self._draw_station_info(route)
+        # Dynamic: Update only arrival times (every refresh) - 6 individual boxes
+        uptown_positions = [
+            Config.Layout.UPTOWN_TIME_1_POSITION,
+            Config.Layout.UPTOWN_TIME_2_POSITION,
+            Config.Layout.UPTOWN_TIME_3_POSITION
+        ]
+        downtown_positions = [
+            Config.Layout.DOWNTOWN_TIME_1_POSITION,
+            Config.Layout.DOWNTOWN_TIME_2_POSITION,
+            Config.Layout.DOWNTOWN_TIME_3_POSITION
+        ]
         
-        # 1st Direction (Uptown)
-        self._draw_direction('UPTOWN', uptown_times,
-                           Config.Layout.UPTOWN_LABEL_POSITION,
-                           Config.Layout.UPTOWN_TIMES_POSITION,
-                           Config.Colors.GREEN)
-        
-        # 2nd Direction (Downtown)
-        self._draw_direction('DOWNTOWN', downtown_times,
-                           Config.Layout.DOWNTOWN_LABEL_POSITION,
-                           Config.Layout.DOWNTOWN_TIMES_POSITION,
-                           Config.Colors.YELLOW)
+        self._draw_direction_times(uptown_times, uptown_positions, Config.Colors.GREEN)
+        self._draw_direction_times(downtown_times, downtown_positions, Config.Colors.YELLOW)
         
         # Update display
         self.matrix.SwapOnVSync(self.canvas)
@@ -206,6 +262,7 @@ class MTALEDDisplay:
     def clear(self):
         """Clear the display"""
         self.canvas.Clear()
+        self.static_drawn = False  # Reset flag
         self.matrix.SwapOnVSync(self.canvas)
 
 

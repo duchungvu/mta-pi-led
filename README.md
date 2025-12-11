@@ -1,295 +1,128 @@
-# MTA Train Status
+# MTA Pi LED Display
 
-A real-time NYC subway train tracker application that displays upcoming train arrivals for stations across the MTA system.
+Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The display loop and hardware control live in `src/image_display.py`.
 
-> **Note:** This application was generated with assistance from [Cursor](https://cursor.sh/), an AI-powered code editor.
+## What it Shows
+- MTA arrival times for one station and line (uptown/downtown columns)
+- Citi Bike counts (bikes and e-bikes) for a single station
+- Updates every 30 seconds on a 64x32 panel
 
-![MTA Train Status App](https://via.placeholder.com/800x450.png?text=MTA+Train+Status+App)
+## Hardware
+- Raspberry Pi (with GPIO access)
+- 64x32 RGB LED matrix panel
+- Adafruit RGB Matrix bonnet/HAT (or compatible wiring)
+- Stable 5V power supply sized for your panel
 
-## Features
+## Software Prereqs
+- Python 3
+- System packages: `git`, `python3-dev`, `python3-pillow`, `libatlas-base-dev`, `tmux`
+- Python deps: `pip install -r config/requirements.txt`
+- LED driver: `rpi-rgb-led-matrix` (build via `setup/setup_led.sh`)
 
-- 🚇 Real-time train arrival information for all MTA subway stations
-- 🔍 Search and add multiple stations to monitor simultaneously
-- 🎨 Visually accurate NYC subway line colors and styling
-- 🔄 Refresh individual stations or all stations at once
-- ⏱️ Visual indicators for imminent train arrivals
-- 📱 Responsive design that works on desktop and mobile devices
-
-## Prerequisites
-
-- Python 3.6 or higher
-- Flask
-- Protobuf and Google Transit libraries
-- Internet connection to access MTA's real-time data feeds
-
-## Installation
-
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/mta-train-status.git
-   cd mta-train-status
-   ```
-
-2. Install the required dependencies:
-   ```
-   pip install flask requests google-transit-realtime-feed-parser protobuf
-   ```
-
-## Running the Application
-
-1. Start the Flask application:
-   ```
-   python app.py
-   ```
-
-2. Open your browser and navigate to:
-   ```
-   http://localhost:5000
-   ```
-
-3. By default, the application will load with no stations selected. Search for and select stations to see train arrivals.
-
-## Sharing with Friends
-
-### Local Network
-To make the app accessible on your local network:
-1. The app is already configured to run on all network interfaces (`0.0.0.0`)
-2. Find your local IP address:
-   - On Mac: Run `ifconfig | grep "inet " | grep -v 127.0.0.1`
-   - On Windows: Run `ipconfig`
-3. Share the URL `http://YOUR_IP_ADDRESS:5000` with friends on the same network
-
-### Remote Access with ngrok
-To share the app with friends outside your network:
-1. Install ngrok: https://ngrok.com/download
-2. Run ngrok to create a tunnel to your local server:
-   ```
-   ngrok http 5000
-   ```
-3. Share the HTTPS URL provided by ngrok with your friends
-4. Note: Free tier ngrok URLs expire after a few hours
-
-## Hosting on Raspberry Pi
-
-### Installation on Raspberry Pi
-
-1. **Update system packages**:
+## Setup
+1) Build LED driver on the Pi  
    ```bash
-   sudo apt update && sudo apt upgrade -y
+   cd setup
+   ./setup_led.sh
    ```
+   This clones/builds `rpi-rgb-led-matrix` under `/home/hung` and installs Python bindings.
 
-2. **Install Python and dependencies**:
+2) Install app dependencies  
    ```bash
-   sudo apt install -y python3-pip python3-venv
-   ```
-
-3. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/mta-pi-led.git
-   cd mta-pi-led
-   ```
-
-4. **Set up a virtual environment**:
-   ```bash
+   cd /home/hung/mta-pi-led   # adjust if cloned elsewhere
    python3 -m venv venv
    source venv/bin/activate
+   pip install -r config/requirements.txt
    ```
 
-5. **Install required packages**:
+3) Keep assets in place  
+   Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in `src/image_display.py`.
+
+4) Sync code to the Pi (from your dev machine)
    ```bash
-   pip install flask requests gtfs-realtime-bindings protobuf
+   ./scripts/pi-sync.sh
    ```
+   This uses `rsync` + `fswatch` to mirror the repo to `${PI_USER}@${PI_HOST}:${PI_DIR}` (edit the script header for your host). Leave it running to auto-sync; stop with Ctrl+C when done.
 
-### Auto-start on Boot
+## Configuration (src/image_display.py)
+- `Config.MTA.STATION`: station code (default `B10`, 57 St F/M)
+- `Config.MTA.ROUTES`: preferred lines (default `["F","M"]`; display picks the first with live arrivals and swaps the icon accordingly)
+- `Config.CitiBike.STATION_ID`: Citi Bike station ID to query
+- `Config.Display.REFRESH_INTERVAL`: seconds between updates
+- `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
+- `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
+- `Config.Files.FONT`: bitmap font path
+- Need another route icon? Run `./scripts/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it into `icons/<ROUTE>_black.png`.
 
-Create a systemd service to run the app automatically on startup:
+Adjust these values before starting the display. If you change the install path, also update the hardcoded `/home/hung/mta-pi-led` in the scripts below.
 
-1. Create a systemd service file:
-   ```bash
-   sudo nano /etc/systemd/system/mta-status.service
-   ```
+## Run / Stop
+- Start: `./scripts/start-display.sh`  
+  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 image_display.py`.
+- Stop: `./scripts/stop-display.sh`
+- Restart: `./scripts/restart-display.sh`
+- Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)
 
-2. Add the following content (replace USERNAME with your actual username):
-   ```
-   [Unit]
-   Description=MTA Train Status App
-   After=network.target
+## Data Sources
+- MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/app.py` via `get_train_status`.
+- Citi Bike: station info/status via `citibike/citibike.py`.
 
-   [Service]
-   User=USERNAME
-   WorkingDirectory=/home/USERNAME/mta-pi-led
-   ExecStart=/home/USERNAME/mta-pi-led/venv/bin/python app.py
-   Restart=always
-   RestartSec=10
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start the service:
-   ```bash
-   sudo systemctl enable mta-status.service
-   sudo systemctl start mta-status.service
-   ```
-
-4. Check status:
-   ```bash
-   sudo systemctl status mta-status.service
-   ```
-
-## Using the Application
-
-### Adding Stations
-1. Use the search box to find stations by name or subway line
-2. Click on a station in the dropdown to add it to your dashboard
-3. The station card will appear with real-time arrival information
-
-### Managing Stations
-- Click on a station chip at the top to quickly scroll to that station
-- Click the "×" button on a station card to remove it
-- Click "Refresh this station" to update just that station's data
-- Click "Refresh All" to update all stations
-
-### Understanding the Display
-- **Now**: Trains arriving immediately (red background)
-- **1-2 min**: Trains arriving very soon (orange text)
-- **3+ min**: Regular upcoming trains
-
-## How It Works
-
-The application connects to the MTA's GTFS-Realtime feeds to retrieve real-time subway information. It processes this data to display upcoming train arrivals for each selected station, organized by line and direction.
-
-## Configuration
-
-Station and route data are loaded from configuration files in the project. The application refreshes automatically every 30 seconds to keep the information current.
-
-## Next Steps
-
-1. Integrate with LED matrix display
-2. Add mobile app for remote control
-3. Implement real-time updates using WebSocket
-
-## License
-
-[MIT License](LICENSE)
-
-## Acknowledgements
-
-- MTA for providing real-time data feeds
-- The GTFS-Realtime specification
-- NYC Transit for the iconic subway line styling
-
-# MTA GTFS-realtime Feed Structure
-
-This document explains the structure of the MTA GTFS-realtime feed data. For the complete specification and detailed field descriptions, please refer to:
-- [Official GTFS-realtime documentation](https://gtfs.org/documentation/realtime/reference)
-- [MTA GTFS-realtime documentation](https://www.mta.info/document/134521)
-
-## Feed Overview
-
-The MTA GTFS-realtime feed provides real-time information about train locations and arrival times. The feed is updated every 30 seconds and contains two types of entities for each train:
-
-1. `tripUpdate`: Contains information about upcoming stops and arrival/departure times
-2. `vehicle`: Contains real-time information about where a train currently is
-
-Each train run will have both a `tripUpdate` entity (showing upcoming stops) and a `vehicle` entity (showing current position).
-
-### Entity Level
-```json
-{
-  "id": "000001N",  // Unique identifier for this train update
-  "tripUpdate": {
-    "trip": {
-      "tripId": "141325_N..N",     // Format: HHMMSS_Route..Direction
-      "startTime": "23:35:10",     // Scheduled start time of the train run
-      "startDate": "20250327",     // Date of the train run (YYYYMMDD)
-      "routeId": "N"               // Route identifier (N, R, W, 4, 5, 6, etc.)
-    },
-    "stopTimeUpdate": [            // Array of upcoming stops
-      {
-        "arrival": {
-          "time": "1743138152"     // Unix timestamp for arrival
-        },
-        "departure": {
-          "time": "1743138152"     // Unix timestamp for departure
-        },
-        "stopId": "R05N"          // Stop identifier
-      }
-    ]
+## MTA GTFS-Realtime Feed Overview
+- Feed updates ~every 30s and includes `tripUpdate` (upcoming stops) and `vehicle` (current position) entities per train.
+- Key fields: `trip.tripId` format `HHMMSS_Route..Direction` (e.g., `141325_N..N`), `stopTimeUpdate[].stopId` ends with `N`/`S` for direction, arrival/departure times are Unix seconds.
+- Example `tripUpdate` payload:
+  ```json
+  {
+    "id": "000001N",
+    "tripUpdate": {
+      "trip": {
+        "tripId": "141325_N..N",
+        "startTime": "23:35:10",
+        "startDate": "20250327",
+        "routeId": "N"
+      },
+      "stopTimeUpdate": [
+        {
+          "arrival": { "time": "1743138152" },
+          "departure": { "time": "1743138152" },
+          "stopId": "R05N"
+        }
+      ]
+    }
   }
-}
-```
-
-### Vehicle Entity
-```json
-{
-  "id": "000002N",
-  "vehicle": {
-    "trip": {
-      "tripId": "138950_N..N",     // Format: HHMMSS_Route..Direction
-      "startTime": "23:12:07",     // Scheduled start time of the train run
-      "startDate": "20250327",     // Date of the train run (YYYYMMDD)
-      "routeId": "N"               // Route identifier (N, R, W, 4, 5, 6, etc.)
-    },
-    "currentStopSequence": 37,     // Sequence number of the current stop
-    "currentStatus": "STOPPED_AT", // Current status of the train
-    "timestamp": "1743136640",     // When this position was recorded
-    "stopId": "R08N"              // Current stop ID where the train is located
-  }
-}
-```
+  ```
+- Reference: [GTFS-realtime spec](https://gtfs.org/documentation/realtime/reference) and [MTA docs](https://www.mta.info/document/134521).
 
 ## Field Descriptions
 
 ### Entity ID
 - `id`: A unique identifier for each train update in the feed
-- Format: Usually a combination of numbers and route letter (e.g., "000001N")
+- Format: Usually a combination of numbers and route letter (e.g., `000001N`)
 
 ### Trip Information
-- `tripId`: Unique identifier for the train run
-  - Format: `HHMMSS_Route..Direction`
-  - Example: "141325_N..N" means:
-    - Started at 14:13:25
-    - N train
-    - Northbound direction
-- `startTime`: The scheduled start time of the train run (HH:MM:SS)
-- `startDate`: The date of the train run in YYYYMMDD format
-- `routeId`: The route identifier (N, R, W, 4, 5, 6, etc.)
+- `tripId`: Unique identifier for the train run  
+  - Format: `HHMMSS_Route..Direction`  
+  - Example: `141325_N..N` means it started at 14:13:25, is an N train, northbound
+- `startTime`: Scheduled start time of the run (`HH:MM:SS`)
+- `startDate`: Date of the run in `YYYYMMDD`
+- `routeId`: Route identifier (N, R, W, 4, 5, 6, etc.)
 
 ### Stop Time Updates (tripUpdate entity)
-Each stop in the `stopTimeUpdate` array contains:
-- `arrival`: Time when the train will arrive at the stop
-  - `time`: Unix timestamp for arrival
-- `departure`: Time when the train will depart from the stop
-  - `time`: Unix timestamp for departure
-- `stopId`: Unique identifier for the station
-  - Format: `[Route][Number][Direction]`
-  - Example: "R05N" means:
-    - R train route
-    - 5th station in sequence
-    - Northbound direction
+Each stop entry contains:
+- `arrival.time`: Unix timestamp when the train will arrive
+- `departure.time`: Unix timestamp when it leaves
+- `stopId`: Station identifier  
+  - Format: `[Route][Number][Direction]`  
+  - Example: `R05N` → R train, 5th station, northbound
 
 ### Vehicle Information (vehicle entity)
-- `currentStopSequence`: The sequence number of the current stop in the train's route
-- `currentStatus`: The current status of the train
-  - "STOPPED_AT": Train is currently stopped at a station
-  - "INCOMING_AT": Train is approaching a station
-  - "IN_TRANSIT_TO": Train is moving to a station
-  - "OUT_OF_SERVICE": Train is not in service
-- `timestamp`: Unix timestamp when this position was recorded
-- `stopId`: The current stop ID where the train is located
+- `currentStopSequence`: Sequence number of the train’s current/next stop
+- `currentStatus`: Train status (`STOPPED_AT`, `INCOMING_AT`, `IN_TRANSIT_TO`, `OUT_OF_SERVICE`)
+- `timestamp`: Unix timestamp when the vehicle position was recorded
+- `stopId`: The stop ID where the train is currently located (when provided)
 
-## Time Format
-- All arrival and departure times are provided in Unix timestamps
-- To convert to human-readable time:
-  ```python
-  from datetime import datetime
-  timestamp = 1743138152
-  human_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-  ```
-
-## Notes
-- When arrival and departure times are the same, it indicates the train is not dwelling at the station
-- The feed provides real-time updates every 30 seconds
-- Stop sequences are ordered from current location to final destination
-- Each train run may have both a `tripUpdate` entity (showing upcoming stops) and a `vehicle` entity (showing current position) 
+## Troubleshooting
+- Logs: `logs/mta_debug.log` (written each run)
+- Matrix flicker/ghosting: try lowering `Config.Hardware.BRIGHTNESS` or tweaking `GPIO_SLOWDOWN`
+- Nothing drawn: verify font/icon paths and that tmux session is running
+- If you clone outside `/home/hung/mta-pi-led`, update the paths in the shell scripts.

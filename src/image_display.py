@@ -37,7 +37,10 @@ class Config:
     class Files:
         """File paths for fonts and icons"""
         FONT = '../fonts/4x6.bdf'
-        ROUTE_ICON = '../icons/F_black.png'
+        ROUTE_ICONS = {
+            'F': '../icons/F_black.png',
+            'M': '../icons/M_black.png',
+        }
     
     class Layout:
         """Display layout positions and sizes"""
@@ -88,8 +91,8 @@ class Config:
     
     class MTA:
         """MTA station and route defaults"""
-        STATION = "B10"  # 57th St F train
-        ROUTE = "F"
+        STATION = "B10"  # 57th St (F/M)
+        ROUTES = ["F", "M"]  # preference order
 
     class CitiBike:
         """Citi Bike station and route defaults"""
@@ -141,16 +144,29 @@ class MTALEDDisplay:
             print(f"✗ Font loading failed: {e}")
             return None
     
-    def _display_line_logo(self, position: Tuple[int, int]) -> bool:
+    def _get_route_icon_path(self, route: str) -> Optional[str]:
+        """Return icon path for given route"""
+        icons = getattr(Config.Files, 'ROUTE_ICONS', {})
+        if route in icons:
+            return icons[route]
+        if icons:
+            return next(iter(icons.values()))
+        return None
+
+    def _display_line_logo(self, route: str, position: Tuple[int, int]) -> bool:
         """Load and display route icon at specified position"""
+        icon_path = self._get_route_icon_path(route)
+        if not icon_path:
+            print("✗ No route icon configured")
+            return False
         try:
-            image = Image.open(Config.Files.ROUTE_ICON)
+            image = Image.open(icon_path)
             image = image.resize(Config.Layout.ICON_SIZE, Image.Resampling.LANCZOS)
             image = image.convert('RGB')
             self.canvas.SetImage(image, position[0], position[1])
             return True
         except Exception as e:
-            print(f"✗ Error displaying route icon: {e}")
+            print(f"✗ Error displaying route icon for {route}: {e}")
             return False
     
     def _format_single_time(self, time_str: str) -> str:
@@ -173,31 +189,63 @@ class MTALEDDisplay:
             graphics.DrawText(self.canvas, self.font, position[0], position[1], 
                             graphics.Color(*color), text)
     
-    def get_realtime_data(self, route: str) -> Tuple[List[str], List[str]]:
-        """Fetch real-time MTA data for specified route"""
+    def get_realtime_data(self, routes: List[str]) -> Tuple[Optional[str], List[str], List[str]]:
+        """Fetch real-time MTA data for preferred routes"""
+        if isinstance(routes, str):
+            routes_to_check = [routes]
+        else:
+            routes_to_check = routes or []
+        
+        if not routes_to_check:
+            print("✗ No routes configured")
+            return None, [], []
+        
         try:
-            print(f"🔄 Fetching {route} train data for {get_station_name(self.station_id)}...")
+            route_list_label = ", ".join(routes_to_check)
+            print(f"🔄 Fetching {route_list_label} data for {get_station_name(self.station_id)}...")
             data = get_train_status(self.station_id)
             
-            if data.get('status') != 'success' or route not in data.get('trains', {}):
-                print(f"✗ No {route} train data available")
-                return [], []
+            if data.get('status') != 'success':
+                print("✗ Train API returned error status")
+                return None, [], []
             
-            route_data = data['trains'][route]
-            uptown = route_data.get('uptown', {}).get('next_arrivals', [])
-            downtown = route_data.get('downtown', {}).get('next_arrivals', [])
+            trains = data.get('trains', {})
+            fallback_route = None
+            fallback_times = ([], [])
             
-            print(f"✓ Uptown: {uptown} | Downtown: {downtown}")
-            return uptown, downtown
+            for route in routes_to_check:
+                if route not in trains:
+                    continue
+                
+                route_data = trains[route]
+                uptown = route_data.get('uptown', {}).get('next_arrivals', [])
+                downtown = route_data.get('downtown', {}).get('next_arrivals', [])
+                
+                if fallback_route is None:
+                    fallback_route = route
+                    fallback_times = (uptown, downtown)
+                
+                if uptown or downtown:
+                    print(f"✓ {route} Uptown: {uptown} | Downtown: {downtown}")
+                    return route, uptown, downtown
+                else:
+                    print(f"⚠️ {route} listed but no arrivals reported")
+            
+            if fallback_route:
+                print(f"⚠️ Using {fallback_route} with empty arrivals")
+                return fallback_route, fallback_times[0], fallback_times[1]
+            
+            print("✗ Preferred routes not present in feed response")
+            return None, [], []
                 
         except Exception as e:
             print(f"✗ Error: {e}")
-            return [], []
+            return None, [], []
     
     def _draw_station_info(self, route: str):
         """Draw station information: line logo + station name"""
         # Line logo (e.g., F train icon)
-        self._display_line_logo(Config.Layout.ICON_POSITION)
+        self._display_line_logo(route, Config.Layout.ICON_POSITION)
         
         # Station name (e.g., "57th St")
         station_name = get_station_name(self.station_id)[:Config.Display.STATION_NAME_MAX_LENGTH]
@@ -332,12 +380,14 @@ class MTALEDDisplay:
 
 def main():
     """Run real-time MTA display"""
-    print(f"🚇 Starting MTA display: {Config.MTA.ROUTE} train @ {get_station_name(Config.MTA.STATION)}")
+    preferred_routes = getattr(Config.MTA, 'ROUTES', None) or [getattr(Config.MTA, 'ROUTE', 'F')]
+    current_route = preferred_routes[0]
+    print(f"🚇 Starting MTA display: {', '.join(preferred_routes)} trains @ {get_station_name(Config.MTA.STATION)}")
     display = MTALEDDisplay(Config.MTA.STATION)
     
     try:
         display.clear()
-        display.show_mta_station_info(Config.MTA.ROUTE, ['UPTOWN', 'DOWNTOWN'])
+        display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
         display.show_citibike_station_info()
         station_info = get_station_info("W 56 St & 6 Ave")
         print(f"Station Info: {station_info}")
@@ -352,7 +402,14 @@ def main():
                     'num_ebikes_available': 0
                 }
 
-            uptown, downtown = display.get_realtime_data(Config.MTA.ROUTE)
+            route, uptown, downtown = display.get_realtime_data(preferred_routes)
+            if route:
+                if route != current_route:
+                    print(f"🔁 Switching display to {route} route")
+                current_route = route
+                display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
+            else:
+                print("⚠️ No preferred routes reported, keeping previous icon")
             
             # Use fallback if no data
             if not uptown and not downtown:
@@ -360,7 +417,7 @@ def main():
                 uptown, downtown = ['No', 'Data'], ['Check', 'API']
             
             # Update display
-            display.show_mta_arrival_times(Config.MTA.ROUTE, uptown, downtown)
+            display.show_mta_arrival_times(current_route, uptown, downtown)
             display.show_citibike_status(citibike_data)
             
             # Wait for next update

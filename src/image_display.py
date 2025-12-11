@@ -6,12 +6,17 @@ Fetches live MTA data and displays on 64x32 LED matrix with 30-second refresh
 
 import sys
 import time
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 
 sys.path.append('/home/hung/rpi-rgb-led-matrix/bindings/python')
 
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 from PIL import Image
+from datetime import datetime
+# Import Citi Bike data functions
+import sys
+sys.path.append('../citibike')
+from citibike import get_station_data, get_station_info
 
 # Import MTA data functions
 from app import get_train_status
@@ -25,7 +30,7 @@ class Config:
         """LED matrix hardware settings"""
         ROWS = 32
         COLS = 64
-        BRIGHTNESS = 20
+        BRIGHTNESS = 10
         MAPPING = 'adafruit-hat'
         GPIO_SLOWDOWN = 5
     
@@ -56,12 +61,23 @@ class Config:
         # Time box dimensions
         TIME_BOX_WIDTH = 12   # 3 chars × 4px per char = 12px
         TIME_BOX_HEIGHT = 6   # Font height
+
+        # Bike icon position
+        BIKE_ICON_POSITION = (1, 26)
+        EBIKE_ICON_POSITION = (21, 26)
+
+        CHAR_WIDTH = 4
+        CHAR_HEIGHT = 6
     
     class Colors:
         """RGB color definitions"""
         WHITE = (255, 255, 255)
         GREEN = (0, 255, 0)
         YELLOW = (255, 255, 0)
+        RED = (255, 0, 0)
+        DAZZLING_BLUE = (57, 80, 160)
+        BLUE = (0, 0, 255)
+
     
     class Display:
         """Display behavior settings"""
@@ -75,13 +91,16 @@ class Config:
         STATION = "B10"  # 57th St F train
         ROUTE = "F"
 
+    class CitiBike:
+        """Citi Bike station and route defaults"""
+        STATION_ID = "66dbc551-0aca-11e7-82f6-3863bb44ef7c"
+
 
 class MTALEDDisplay:
     """Real-time MTA LED display with route icons"""
     
     def __init__(self, station_id: str = Config.MTA.STATION):
         self.station_id = self._validate_station(station_id)
-        self.static_drawn = False  # Track if static elements are drawn
         
         # Initialize hardware
         self.matrix = self._setup_matrix()
@@ -185,34 +204,27 @@ class MTALEDDisplay:
         print(f"Station name: {station_name}")
         self._draw_text(station_name, Config.Layout.STATION_NAME_POSITION, Config.Colors.WHITE)
     
-    def _clear_time_box(self, position: Tuple[int, int]):
-        """Clear a single time box (12x6 pixels for 3 characters)"""
-        x, y = position
-        # BDF fonts: y is baseline, text appears ABOVE it
-        # For 4x6 font: FONT_ASCENT = 5, FONT_DESCENT = 1
-        # Clear from (y - 5) to (y + 1) = 6 pixels total
-        y_start = y - 5  # Start 5 pixels above baseline
-        
-        for dy in range(Config.Layout.TIME_BOX_HEIGHT):
-            for dx in range(Config.Layout.TIME_BOX_WIDTH):
-                if x + dx < Config.Hardware.COLS and y_start + dy >= 0 and y_start + dy < Config.Hardware.ROWS:
-                    self.canvas.SetPixel(x + dx, y_start + dy, 0, 0, 0)
+    def clear_area(self, position: Tuple[int, int], size: Tuple[int, int]):
+        """Clear an area of the canvas"""
+        for col in range(position[0], position[0] + size[0]):
+            for row in range(position[1], position[1] + size[1]):
+                if col < Config.Hardware.COLS and row < Config.Hardware.ROWS:
+                    self.canvas.SetPixel(col, row, 0, 0, 0)
     
     def _draw_direction_label(self, direction_name: str, label_position: Tuple[int, int]):
-        """Draw direction label (static - drawn once)"""
+        """Draw direction label (static)"""
         self._draw_text(direction_name, label_position, Config.Colors.WHITE)
     
     def _draw_time_box(self, time_str: str, position: Tuple[int, int], color: Tuple[int, int, int]):
         """Draw a single arrival time in its box (clear + draw)"""
         # Clear the box first
-        self._clear_time_box(position)
+        self.clear_area([position[0], position[1] - Config.Layout.CHAR_HEIGHT], [Config.Layout.TIME_BOX_WIDTH, Config.Layout.TIME_BOX_HEIGHT])
         
         # Format and draw the time
         formatted_time = self._format_single_time(time_str)
         self._draw_text(formatted_time, position, color)
     
-    def _draw_direction_times(self, times: List[str], box_positions: List[Tuple[int, int]], 
-                             color: Tuple[int, int, int]):
+    def show_arrival_times(self, times: List[str], box_positions: List[Tuple[int, int]], color: Tuple[int, int, int]):
         """Draw all arrival times for one direction (updates 3 boxes)"""
         # Ensure we have exactly 3 times (pad with empty if needed)
         padded_times = (times + [''] * Config.Display.ARRIVALS_PER_DIRECTION)[:Config.Display.ARRIVALS_PER_DIRECTION]
@@ -220,26 +232,61 @@ class MTALEDDisplay:
         # Draw each time in its own box
         for time_str, position in zip(padded_times, box_positions):
             self._draw_time_box(time_str, position, color)
-    
-    def display_route(self, route: str, uptown_times: List[str], downtown_times: List[str]):
-        """Display complete MTA board with all components"""
-        if not self.font:
-            print("✗ No font available, cannot display")
-            return
+
+    def _draw_bike(self, position: Tuple[int, int], color: Tuple[int, int, int]):
+        """Draw a 6x10 bike """
+        x, y = position
         
-        # Draw static elements only on first call
-        if not self.static_drawn:
-            self.canvas.Clear()
-            
-            # Static: Station Info (line logo + station name)
-            self._draw_station_info(route)
-            
-            # Static: Direction labels
-            self._draw_direction_label('UPTOWN', Config.Layout.UPTOWN_LABEL_POSITION)
-            self._draw_direction_label('DOWNTOWN', Config.Layout.DOWNTOWN_LABEL_POSITION)
-            
-            self.static_drawn = True
-            print("✓ Static elements drawn")
+        icon_pattern = [
+            [0, 1, 1, 1, 0, 0, 0, 0, 0, 0],  
+            [0, 0, 1, 0, 1, 1, 0, 0, 0, 0], 
+            [0, 1, 1, 0, 0, 1, 0, 1, 1, 0], 
+            [1, 0, 0, 1, 1, 1, 1, 0, 0, 1], 
+            [1, 0, 0, 1, 0, 0, 1, 0, 0, 1], 
+            [0, 1, 1, 0, 0, 0, 0, 1, 1, 0]   
+        ]
+        
+        for row in range(len(icon_pattern)):
+            for col in range(len(icon_pattern[row])):
+                if icon_pattern[row][col] == 1:
+                    self.canvas.SetPixel(x + col, y + row, color[0], color[1], color[2])
+
+    def _draw_ebike(self, position: Tuple[int, int], color: Tuple[int, int, int]):
+        """Draw a plug indicator"""
+        x, y = position
+        
+        icon_pattern = [
+            [0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0], 
+            [1, 1, 1, 1, 1],  
+            [0, 0, 1, 0, 0],  
+            [1, 0, 1, 0, 0],  
+            [1, 1, 1, 0, 0]   
+        ]
+
+        icon_pattern = [
+            [0, 0, 1, 0],
+            [0, 1, 0, 0], 
+            [1, 1, 1, 1],  
+            [0, 0, 1, 0],  
+            [0, 1, 0, 0],  
+            [1, 0, 0, 0]   
+        ]
+        
+        for row in range(len(icon_pattern)):
+            for col in range(len(icon_pattern[row])):
+                if icon_pattern[row][col] == 1:
+                    self.canvas.SetPixel(x + col, y + row, color[0], color[1], color[2])
+
+    def show_mta_station_info(self, route: str, directions: List[str]):
+        """Show MTA station info"""
+
+        self._draw_station_info(route)
+        self._draw_direction_label(directions[0], Config.Layout.UPTOWN_LABEL_POSITION)
+        self._draw_direction_label(directions[1], Config.Layout.DOWNTOWN_LABEL_POSITION)
+    
+    def show_mta_arrival_times(self, route: str, uptown_times: List[str], downtown_times: List[str]):
+        """Display complete MTA board with all components"""
         
         # Dynamic: Update only arrival times (every refresh) - 6 individual boxes
         uptown_positions = [
@@ -253,16 +300,33 @@ class MTALEDDisplay:
             Config.Layout.DOWNTOWN_TIME_3_POSITION
         ]
         
-        self._draw_direction_times(uptown_times, uptown_positions, Config.Colors.GREEN)
-        self._draw_direction_times(downtown_times, downtown_positions, Config.Colors.YELLOW)
+        self.show_arrival_times(uptown_times, uptown_positions, Config.Colors.GREEN)
+        self.show_arrival_times(downtown_times, downtown_positions, Config.Colors.YELLOW)
         
         # Update display
         self.matrix.SwapOnVSync(self.canvas)
+        
+    def show_citibike_station_info(self):
+        """Show Cibike station info"""
+        self._draw_bike(Config.Layout.BIKE_ICON_POSITION, Config.Colors.DAZZLING_BLUE)
+        self._draw_ebike(Config.Layout.EBIKE_ICON_POSITION, Config.Colors.DAZZLING_BLUE)
+
+    def show_citibike_status(self, data: Dict):
+        """Show Cibike status"""
+        num_normal_bikes = data['num_bikes_available'] - data['num_ebikes_available']
+        num_ebikes = data['num_ebikes_available']
+
+        bike_time_position = [Config.Layout.BIKE_ICON_POSITION[0] + 11, Config.Layout.BIKE_ICON_POSITION[1] + 6]
+        ebike_time_position = [Config.Layout.EBIKE_ICON_POSITION[0] + 5, Config.Layout.EBIKE_ICON_POSITION[1] + 6]
+
+        self.clear_area([bike_time_position[0], bike_time_position[1] - 6], [Config.Layout.CHAR_WIDTH * 2, Config.Layout.CHAR_HEIGHT])
+        self.clear_area([ebike_time_position[0], ebike_time_position[1] - 6], [Config.Layout.CHAR_WIDTH * 2, Config.Layout.CHAR_HEIGHT])
+        self._draw_text(f"{num_normal_bikes}", bike_time_position,  Config.Colors.BLUE if num_normal_bikes > 0 else Config.Colors.RED)
+        self._draw_text(f"{num_ebikes}", ebike_time_position, Config.Colors.BLUE if num_ebikes > 0 else Config.Colors.RED)
     
     def clear(self):
         """Clear the display"""
         self.canvas.Clear()
-        self.static_drawn = False  # Reset flag
         self.matrix.SwapOnVSync(self.canvas)
 
 
@@ -272,8 +336,22 @@ def main():
     display = MTALEDDisplay(Config.MTA.STATION)
     
     try:
+        display.clear()
+        display.show_mta_station_info(Config.MTA.ROUTE, ['UPTOWN', 'DOWNTOWN'])
+        display.show_citibike_station_info()
+        station_info = get_station_info("W 56 St & 6 Ave")
+        print(f"Station Info: {station_info}")
+
         while True:
-            # Fetch fresh data
+            try:
+                citibike_data = get_station_data(station_info['station_id'])
+            except Exception as e:
+                print(f"Error getting citibike data: {e}")
+                citibike_data = {
+                    'num_bikes_available': 0,
+                    'num_ebikes_available': 0
+                }
+
             uptown, downtown = display.get_realtime_data(Config.MTA.ROUTE)
             
             # Use fallback if no data
@@ -282,7 +360,8 @@ def main():
                 uptown, downtown = ['No', 'Data'], ['Check', 'API']
             
             # Update display
-            display.display_route(Config.MTA.ROUTE, uptown, downtown)
+            display.show_mta_arrival_times(Config.MTA.ROUTE, uptown, downtown)
+            display.show_citibike_status(citibike_data)
             
             # Wait for next update
             print(f"⏰ Next update in {Config.Display.REFRESH_INTERVAL} seconds... (Ctrl+C to stop)")
@@ -291,9 +370,6 @@ def main():
     except KeyboardInterrupt:
         display.clear()
         print(f"\n🛑 Display stopped.")
-    except Exception as e:
-        display.clear()
-        print(f"\n❌ Display error: {e}")
 
 
 if __name__ == "__main__":

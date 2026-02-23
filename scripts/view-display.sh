@@ -1,7 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Attach to the running MTA LED Display tmux session
 
-SESSION_NAME="mta-display"
+set -euo pipefail
+
+SESSION_NAME="${SESSION_NAME:-mta-display}"
 
 echo "📺 Connecting to MTA LED Display..."
 
@@ -19,4 +21,3 @@ sleep 1
 
 # Attach to the session
 tmux attach -t "$SESSION_NAME"
-

@@ -1,7 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Stop MTA LED Display tmux session
 
-SESSION_NAME="mta-display"
+set -euo pipefail
+
+SESSION_NAME="${SESSION_NAME:-mta-display}"
 
 echo "🛑 Stopping MTA LED Display..."
 
@@ -26,4 +28,3 @@ echo "✓ MTA display stopped"
 echo ""
 echo "📋 To start again:"
 echo "   ./scripts/start-display.sh"
-

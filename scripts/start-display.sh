@@ -1,10 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Start MTA LED Display in tmux session
 
-SESSION_NAME="mta-display"
-PROJECT_DIR="/home/hung/mta-pi-led"
-RUNTIME_SCRIPT="led_board.py"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SESSION_NAME="${SESSION_NAME:-mta-display}"
+RUNTIME_SCRIPT="${RUNTIME_SCRIPT:-led_board.py}"
 SCRIPT_PATH="$PROJECT_DIR/src/$RUNTIME_SCRIPT"
+BOARD_CONFIG_PATH="${BOARD_CONFIG_PATH:-$PROJECT_DIR/config/board.json}"
 
 echo "🚇 Starting MTA LED Display..."
 
@@ -23,10 +27,16 @@ if [ ! -f "$SCRIPT_PATH" ]; then
     exit 1
 fi
 
+# Check if board config exists
+if [ ! -f "$BOARD_CONFIG_PATH" ]; then
+    echo "❌ Error: board config not found at $BOARD_CONFIG_PATH"
+    exit 1
+fi
+
 # Create new tmux session and run the display
 tmux new-session -d -s "$SESSION_NAME" -c "$PROJECT_DIR"
-tmux send-keys -t "$SESSION_NAME" "cd $PROJECT_DIR/src" C-m
-tmux send-keys -t "$SESSION_NAME" "sudo python3 $RUNTIME_SCRIPT" C-m
+tmux send-keys -t "$SESSION_NAME" "cd '$PROJECT_DIR/src'" C-m
+tmux send-keys -t "$SESSION_NAME" "sudo env BOARD_CONFIG_PATH='$BOARD_CONFIG_PATH' python3 '$RUNTIME_SCRIPT'" C-m
 
 echo "✓ MTA display started in tmux session '$SESSION_NAME'"
 echo ""

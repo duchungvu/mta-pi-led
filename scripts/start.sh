@@ -1,12 +1,25 @@
-#!/bin/bash
-cd /home/hung/mta-pi-led
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+VENV_DIR="${VENV_DIR:-$PROJECT_DIR/venv}"
+APP_DIR="$PROJECT_DIR/src"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+cd "$PROJECT_DIR"
 
 # Activate virtual environment
-source venv/bin/activate
+if [ -f "$VENV_DIR/bin/activate" ]; then
+  # shellcheck disable=SC1090
+  source "$VENV_DIR/bin/activate"
+else
+  echo "⚠️  Virtualenv not found at $VENV_DIR. Continuing without activation."
+fi
 
 # Start Flask app in background
-cd src
-python app.py &
+cd "$APP_DIR"
+"$PYTHON_BIN" app.py &
 FLASK_PID=$!
 
 # Wait for Flask to start

@@ -61,8 +61,8 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 ## Configuration
 
 - Runtime board settings live in `config/board.json`:
-  - `stations`: station codes to display (current runtime uses the first station)
-  - `rotation_seconds`: line/station rotation interval (wired for upcoming rotation logic)
+  - `stations`: station codes to include in station/line rotation schedule
+  - `rotation_seconds`: line/station rotation interval
   - `refresh_seconds`: seconds between data refreshes
   - `citibike_station_id`: Citi Bike station ID to query
 - Hardware/layout defaults live in `src/led_board.py` (`Config.Hardware`, `Config.Layout`, colors/fonts/icons).
@@ -71,12 +71,12 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 - `Config.Files.FONT`: bitmap font path
 - Need another route icon? Run `./scripts/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it into `icons/<ROUTE>_black.png`.
 
-Adjust these values before starting the display. If you change the install path, also update the hardcoded `/home/hung/mta-pi-led` in the scripts below.
+Adjust these values before starting the display. Scripts now auto-detect the project root from their own location. You can still override with environment variables (for example `PROJECT_DIR`, `SESSION_NAME`, `BOARD_CONFIG_PATH`).
 
 ## Run / Stop
 
 - Start: `./scripts/start-display.sh`  
-  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 led_board.py`.
+  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 led_board.py` with `BOARD_CONFIG_PATH`.
 - Stop: `./scripts/stop-display.sh`
 - Restart: `./scripts/restart-display.sh`
 - Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)
@@ -153,4 +153,4 @@ Each stop entry contains:
 - Logs: `logs/mta_debug.log` (written each run)
 - Matrix flicker/ghosting: try lowering `Config.Hardware.BRIGHTNESS` or tweaking `GPIO_SLOWDOWN`
 - Nothing drawn: verify font/icon paths and that tmux session is running
-- If you clone outside `/home/hung/mta-pi-led`, update the paths in the shell scripts.
+- If you use a non-default location or session name, use env overrides when launching scripts (for example `PROJECT_DIR=...`, `SESSION_NAME=...`, `BOARD_CONFIG_PATH=...`).

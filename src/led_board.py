@@ -21,6 +21,12 @@ if str(PROJECT_ROOT / "src") not in sys.path:
 # Import Citi Bike data functions from package path
 from mta_pi_led.services.board_config import BoardConfig, load_board_config
 from mta_pi_led.services.citibike import get_station_data
+from mta_pi_led.services.display_scheduler import (
+    DisplaySchedule,
+    DisplayView,
+    create_display_schedule,
+    get_active_view,
+)
 
 # Import MTA data functions
 from app import get_train_status
@@ -124,6 +130,16 @@ class MTALEDDisplay:
         
         print(f"✗ Invalid station ID: {station_id}, using default")
         return Config.MTA.STATION
+
+    def set_station(self, station_id: str):
+        """Switch active station for fetching/rendering."""
+        validated_station = self._validate_station(station_id)
+        if validated_station != self.station_id:
+            self.station_id = validated_station
+            print(
+                f"🔁 Switching station to {get_station_name(self.station_id)} "
+                f"({self.station_id})"
+            )
     
     def _setup_matrix(self) -> RGBMatrix:
         """Configure and initialize LED matrix"""
@@ -390,56 +406,119 @@ def apply_board_config(board_config: BoardConfig):
     Config.CitiBike.STATION_ID = board_config.citibike_station_id
 
 
+def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
+    """Build station/line rotation schedule from configured stations."""
+
+    def _line_lookup(station_id: str) -> List[str]:
+        if not is_valid_station(station_id):
+            print(f"⚠️ Skipping invalid station in schedule: {station_id}")
+            return []
+        return get_station_lines(station_id)
+
+    fallback_route = Config.MTA.ROUTES[0] if Config.MTA.ROUTES else "F"
+    if is_valid_station(Config.MTA.STATION):
+        station_lines = get_station_lines(Config.MTA.STATION)
+        if station_lines:
+            fallback_route = station_lines[0]
+
+    schedule = create_display_schedule(
+        station_ids=station_ids,
+        line_lookup=_line_lookup,
+        interval_seconds=Config.Display.ROTATION_INTERVAL,
+        default_view=DisplayView(
+            station_id=Config.MTA.STATION,
+            route_id=fallback_route,
+        ),
+    )
+    schedule_label = ", ".join(
+        f"{view.station_id}:{view.route_id}" for view in schedule.views
+    )
+    print(
+        f"📋 Display schedule ({schedule.interval_seconds}s): "
+        f"{schedule_label if schedule_label else '[empty]'}"
+    )
+    return schedule
+
+
 def main():
     """Run real-time MTA display"""
     board_config = load_board_config()
     apply_board_config(board_config)
+    schedule = build_display_schedule(board_config.stations)
+    active_view = get_active_view(schedule)
+    if active_view is None:
+        print("✗ No display views available. Exiting.")
+        return
 
-    # Derive routes from configured station so station changes do not require code changes.
-    preferred_routes = get_station_lines(Config.MTA.STATION)
-    if not preferred_routes:
-        preferred_routes = getattr(Config.MTA, 'ROUTES', None) or [getattr(Config.MTA, 'ROUTE', 'F')]
-    current_route = preferred_routes[0]
-    print(f"🚇 Starting MTA display: {', '.join(preferred_routes)} trains @ {get_station_name(Config.MTA.STATION)}")
-    display = MTALEDDisplay(Config.MTA.STATION)
+    print(
+        f"🚇 Starting MTA display scheduler @ {Config.Display.ROTATION_INTERVAL}s "
+        f"rotation, {Config.Display.REFRESH_INTERVAL}s refresh"
+    )
+    display = MTALEDDisplay(active_view.station_id)
+    current_route = active_view.route_id
+    display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
+
+    # Cache arrivals by (station, route) so views can rotate faster than feed refresh.
+    arrival_cache: Dict[Tuple[str, str], Tuple[int, List[str], List[str]]] = {}
+    last_citibike_fetch_ts = 0
     
     try:
         display.clear()
-        display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
-        station_id = Config.CitiBike.STATION_ID
 
         while True:
-            try:
-                citibike_data = get_station_data(station_id)
-                if not citibike_data:
-                    raise ValueError("Citi Bike station not found or status unavailable")
-            except Exception as e:
-                print(f"Error getting citibike data: {e}")
-                citibike_data = {
-                    'num_bikes_available': 0,
-                    'num_ebikes_available': 0
-                }
+            now_ts = int(time.time())
+            active_view = get_active_view(schedule, now_ts=now_ts)
+            if active_view is None:
+                time.sleep(1)
+                continue
 
-            route, uptown, downtown = display.get_realtime_data(preferred_routes)
-            if route:
-                if route != current_route:
-                    print(f"🔁 Switching display to {route} route")
-                current_route = route
-                display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
+            if display.station_id != active_view.station_id:
+                display.set_station(active_view.station_id)
+
+            if current_route != active_view.route_id:
+                current_route = active_view.route_id
+                print(f"🔁 Switching line to {current_route}")
+
+            display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
+            cache_key = (display.station_id, current_route)
+
+            cached_arrivals = arrival_cache.get(cache_key)
+            cache_is_stale = (
+                cached_arrivals is None
+                or (now_ts - cached_arrivals[0]) >= Config.Display.REFRESH_INTERVAL
+            )
+
+            if cache_is_stale:
+                route, uptown, downtown = display.get_realtime_data([current_route])
+                if route:
+                    current_route = route
+                    cache_key = (display.station_id, current_route)
+                else:
+                    uptown, downtown = [], []
+
+                if not uptown and not downtown:
+                    print("⚠️ Using fallback data (no real data available)")
+                    uptown, downtown = ['No', 'Data'], ['Check', 'API']
+
+                arrival_cache[cache_key] = (now_ts, uptown, downtown)
             else:
-                print("⚠️ No preferred routes reported, keeping previous icon")
-            
-            # Use fallback if no data
-            if not uptown and not downtown:
-                print("⚠️ Using fallback data (no real data available)")
-                uptown, downtown = ['No', 'Data'], ['Check', 'API']
-            
-            # Update display
+                _, uptown, downtown = cached_arrivals
+
             display.show_mta_arrival_times(current_route, uptown, downtown)
-            
-            # Wait for next update
-            print(f"⏰ Next update in {Config.Display.REFRESH_INTERVAL} seconds... (Ctrl+C to stop)")
-            time.sleep(Config.Display.REFRESH_INTERVAL)
+
+            # Citi Bike stays on refresh cadence for now.
+            if (now_ts - last_citibike_fetch_ts) >= Config.Display.REFRESH_INTERVAL:
+                try:
+                    get_station_data(Config.CitiBike.STATION_ID)
+                except Exception as e:
+                    print(f"Error getting citibike data: {e}")
+                last_citibike_fetch_ts = now_ts
+
+            sleep_seconds = min(
+                Config.Display.REFRESH_INTERVAL, Config.Display.ROTATION_INTERVAL
+            )
+            sleep_seconds = max(1, sleep_seconds)
+            time.sleep(sleep_seconds)
             
     except KeyboardInterrupt:
         display.clear()

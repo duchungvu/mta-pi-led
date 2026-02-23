@@ -48,7 +48,7 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 4) Sync code to the Pi (from your dev machine)
 
    ```bash
-   ./scripts/pi-sync.sh
+   ./scripts/sync/pi-sync.sh
    ```
 
    This uses `rsync` + `fswatch` to mirror the repo to `${PI_USER}@${PI_HOST}:${PI_DIR}` (edit the script header for your host). Leave it running to auto-sync; stop with Ctrl+C when done.
@@ -69,17 +69,35 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 - `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
 - `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
 - `Config.Files.FONT`: bitmap font path
-- Need another route icon? Run `./scripts/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it in place.
+- Need another route icon? Run `./scripts/tools/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it in place.
 
 Adjust these values before starting the display. Scripts now auto-detect the project root from their own location. You can still override with environment variables (for example `PROJECT_DIR`, `SESSION_NAME`, `BOARD_CONFIG_PATH`).
 
 ## Run / Stop
 
-- Start: `./scripts/start-display.sh`  
+- Start: `./scripts/board/start.sh`  
   - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 led_board.py` with `BOARD_CONFIG_PATH`.
-- Stop: `./scripts/stop-display.sh`
-- Restart: `./scripts/restart-display.sh`
+- Stop: `./scripts/board/stop.sh`
+- Restart: `./scripts/board/restart.sh`
 - Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)
+
+## Script Layout
+
+- Board runtime scripts: `scripts/board/`
+- Sync scripts: `scripts/sync/`
+- Utility/tools scripts (logo and data generation): `scripts/tools/`
+- Web debug launcher: `scripts/web/start-web.sh`
+
+## Script Commands
+
+- Board start: `./scripts/board/start.sh`
+- Board stop: `./scripts/board/stop.sh`
+- Board restart: `./scripts/board/restart.sh`
+- Board view (attach tmux): `./scripts/board/view.sh`
+- Pi sync: `./scripts/sync/pi-sync.sh`
+- Generate route icon: `./scripts/tools/create_route_logo.py <ROUTE>`
+- Rebuild station DB: `./scripts/tools/create_station_db.py`
+- Start web debug app: `./scripts/web/start-web.sh`
 
 ## Data Sources
 

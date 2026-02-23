@@ -10,13 +10,17 @@
 
 - MTA LED board shows real-time train arrivals on the panel.
 - Board supports config-driven station selection via `config/board.json`.
-- Existing operational workflow is in place (`scripts/start-display.sh`, `scripts/stop-display.sh`, `scripts/pi-sync.sh`).
+- Existing operational workflow is in place (`scripts/board/start.sh`, `scripts/board/stop.sh`, `scripts/sync/pi-sync.sh`).
 - Added runtime board config file at `config/board.json` for station/refresh/rotation/Citi Bike settings.
 - Renamed main display runtime entrypoint to `src/led_board.py` (legacy wrapper kept at `src/image_display.py`).
 - Added shared display scheduler service (`display_scheduler`) for station/line view rotation.
 - Board rotates across configured station/line views using `rotation_seconds`, with cached arrivals keyed by `(station, line)`.
 - Station name now auto-scrolls when it exceeds available display width.
 - Board skips routes with no live arrivals and retries them after refresh cooldown.
+- Scripts reorganized by purpose:
+  - `scripts/board/` for display runtime operations
+  - `scripts/sync/` for Pi sync tooling
+  - `scripts/tools/` for reusable utility scripts (including route logo generation)
 - Phase 1 repo baseline completed:
   - Added package root at `src/mta_pi_led/`
   - Moved Citi Bike service into `src/mta_pi_led/services/citibike.py`

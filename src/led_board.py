@@ -98,10 +98,10 @@ class Config:
         ARRIVALS_PER_DIRECTION = 3  # Show 3 arrival times per direction
         STATION_NAME_VISIBLE_CHARS = 5
         STATION_NAME_SCROLL_GAP = 3
-        STATION_NAME_SCROLL_STEP_SECONDS = 0.18
+        STATION_NAME_SCROLL_STEP_SECONDS = 0.22
         ROTATION_INTERVAL = 10
         REFRESH_INTERVAL = 30
-        UI_TICK_INTERVAL = 0.12
+        UI_TICK_INTERVAL = 0.16
         TIME_MAX_CHARS = 3  # Max characters per time box
     
     class MTA:
@@ -386,7 +386,7 @@ class MTALEDDisplay:
             print(f"✗ Error: {e}")
             return None, [], []
     
-    def _draw_station_info(self, route: str):
+    def _draw_station_info(self, route: str, station_name_window: Optional[str] = None):
         """Draw station information: line logo + station name"""
         # Clear header regions so station/route updates do not leave stale pixels.
         self.clear_area(Config.Layout.ICON_POSITION, Config.Layout.ICON_SIZE)
@@ -410,7 +410,8 @@ class MTALEDDisplay:
             self._draw_route_fallback(route)
 
         # Station name (scrolling window for long names)
-        station_name_window = self._get_station_name_window()
+        if station_name_window is None:
+            station_name_window = self._get_station_name_window()
         self._draw_text(
             station_name_window,
             Config.Layout.STATION_NAME_POSITION,
@@ -482,10 +483,15 @@ class MTALEDDisplay:
                 if icon_pattern[row][col] == 1:
                     self.canvas.SetPixel(x + col, y + row, color[0], color[1], color[2])
 
-    def show_mta_station_info(self, route: str, directions: List[str]):
+    def show_mta_station_info(
+        self,
+        route: str,
+        directions: List[str],
+        station_name_window: Optional[str] = None,
+    ):
         """Show MTA station info"""
 
-        self._draw_station_info(route)
+        self._draw_station_info(route, station_name_window=station_name_window)
         self._draw_direction_label(directions[0], Config.Layout.UPTOWN_LABEL_POSITION)
         self._draw_direction_label(directions[1], Config.Layout.DOWNTOWN_LABEL_POSITION)
     
@@ -508,7 +514,7 @@ class MTALEDDisplay:
         self.show_arrival_times(downtown_times, downtown_positions, Config.Colors.YELLOW)
         
         # Update display
-        self.matrix.SwapOnVSync(self.canvas)
+        self.canvas = self.matrix.SwapOnVSync(self.canvas)
         
     def draw_citibike_icons(self):
         """Draw Citi Bike icons (not shown by default)"""
@@ -531,7 +537,7 @@ class MTALEDDisplay:
     def clear(self):
         """Clear the display"""
         self.canvas.Clear()
-        self.matrix.SwapOnVSync(self.canvas)
+        self.canvas = self.matrix.SwapOnVSync(self.canvas)
 
 
 def apply_board_config(board_config: BoardConfig):
@@ -623,13 +629,13 @@ def main():
     )
     display = MTALEDDisplay(active_view.station_id)
     current_route = active_view.route_id
-    display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
 
     # Cache arrivals by (station, route) so views can rotate faster than feed refresh.
     arrival_cache: Dict[Tuple[str, str], Tuple[int, List[str], List[str]]] = {}
     # Temporarily skip views with no live arrivals.
     unavailable_until: Dict[Tuple[str, str], int] = {}
     last_citibike_fetch_ts = 0
+    last_render_signature: Optional[Tuple[str, str, Tuple[str, ...], Tuple[str, ...], str]] = None
     
     try:
         display.clear()
@@ -652,7 +658,6 @@ def main():
                 current_route = active_view.route_id
                 print(f"🔁 Switching line to {current_route}")
 
-            display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
             cache_key = (display.station_id, current_route)
 
             cached_arrivals = arrival_cache.get(cache_key)
@@ -686,7 +691,22 @@ def main():
             else:
                 _, uptown, downtown = cached_arrivals
 
-            display.show_mta_arrival_times(current_route, uptown, downtown)
+            station_name_window = display._get_station_name_window()
+            render_signature = (
+                display.station_id,
+                current_route,
+                tuple(uptown),
+                tuple(downtown),
+                station_name_window,
+            )
+            if render_signature != last_render_signature:
+                display.show_mta_station_info(
+                    current_route,
+                    ['UPTOWN', 'DOWNTOWN'],
+                    station_name_window=station_name_window,
+                )
+                display.show_mta_arrival_times(current_route, uptown, downtown)
+                last_render_signature = render_signature
 
             # Citi Bike stays on refresh cadence for now.
             if (now_ts - last_citibike_fetch_ts) >= Config.Display.REFRESH_INTERVAL:

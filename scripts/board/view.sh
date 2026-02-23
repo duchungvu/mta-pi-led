@@ -12,7 +12,7 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "❌ Session '$SESSION_NAME' is not running."
     echo ""
     echo "📋 To start the display:"
-    echo "   ./scripts/start-display.sh"
+    echo "   ./scripts/board/start.sh"
     exit 1
 fi
 

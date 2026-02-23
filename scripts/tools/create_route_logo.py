@@ -19,7 +19,7 @@ from typing import List, Tuple
 
 COMMONS_BASE = "https://upload.wikimedia.org/wikipedia/commons"
 FILENAME_TEMPLATE = "NYCS-bull-trans-{route}.svg"
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BPP = 4  # RGBA
 
 

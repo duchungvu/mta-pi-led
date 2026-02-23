@@ -1,8 +1,6 @@
 {
   "stations": [
-    "127",
-    "A28",
-    "631"
+    "R10"
   ],
   "rotation_seconds": 5,
   "refresh_seconds": 30,

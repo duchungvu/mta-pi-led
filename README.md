@@ -3,31 +3,38 @@
 Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The display loop and hardware control live in `src/image_display.py`.
 
 ## What it Shows
+
 - MTA arrival times for one station and line (uptown/downtown columns)
 - Citi Bike counts (bikes and e-bikes) for a single station
 - Updates every 30 seconds on a 64x32 panel
 
 ## Hardware
+
 - Raspberry Pi (with GPIO access)
 - 64x32 RGB LED matrix panel
 - Adafruit RGB Matrix bonnet/HAT (or compatible wiring)
 - Stable 5V power supply sized for your panel
 
 ## Software Prereqs
+
 - Python 3
 - System packages: `git`, `python3-dev`, `python3-pillow`, `libatlas-base-dev`, `tmux`
 - Python deps: `pip install -r config/requirements.txt`
 - LED driver: `rpi-rgb-led-matrix` (build via `setup/setup_led.sh`)
 
 ## Setup
+
 1) Build LED driver on the Pi  
+
    ```bash
    cd setup
    ./setup_led.sh
    ```
+
    This clones/builds `rpi-rgb-led-matrix` under `/home/hung` and installs Python bindings.
 
 2) Install app dependencies  
+
    ```bash
    cd /home/hung/mta-pi-led   # adjust if cloned elsewhere
    python3 -m venv venv
@@ -39,12 +46,20 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
    Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in `src/image_display.py`.
 
 4) Sync code to the Pi (from your dev machine)
+
    ```bash
    ./scripts/pi-sync.sh
    ```
+
    This uses `rsync` + `fswatch` to mirror the repo to `${PI_USER}@${PI_HOST}:${PI_DIR}` (edit the script header for your host). Leave it running to auto-sync; stop with Ctrl+C when done.
+   If you need shell access to the Pi, SSH using the configured hostname, e.g.:
+
+   ```bash
+   ssh hung@hung-rpi.local
+   ```
 
 ## Configuration (src/image_display.py)
+
 - `Config.MTA.STATION`: station code (default `B10`, 57 St F/M)
 - `Config.MTA.ROUTES`: preferred lines (default `["F","M"]`; display picks the first with live arrivals and swaps the icon accordingly)
 - `Config.CitiBike.STATION_ID`: Citi Bike station ID to query
@@ -57,6 +72,7 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 Adjust these values before starting the display. If you change the install path, also update the hardcoded `/home/hung/mta-pi-led` in the scripts below.
 
 ## Run / Stop
+
 - Start: `./scripts/start-display.sh`  
   - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 image_display.py`.
 - Stop: `./scripts/stop-display.sh`
@@ -64,13 +80,16 @@ Adjust these values before starting the display. If you change the install path,
 - Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)
 
 ## Data Sources
+
 - MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/app.py` via `get_train_status`.
 - Citi Bike: station info/status via `citibike/citibike.py`.
 
 ## MTA GTFS-Realtime Feed Overview
+
 - Feed updates ~every 30s and includes `tripUpdate` (upcoming stops) and `vehicle` (current position) entities per train.
 - Key fields: `trip.tripId` format `HHMMSS_Route..Direction` (e.g., `141325_N..N`), `stopTimeUpdate[].stopId` ends with `N`/`S` for direction, arrival/departure times are Unix seconds.
 - Example `tripUpdate` payload:
+
   ```json
   {
     "id": "000001N",
@@ -91,15 +110,18 @@ Adjust these values before starting the display. If you change the install path,
     }
   }
   ```
+
 - Reference: [GTFS-realtime spec](https://gtfs.org/documentation/realtime/reference) and [MTA docs](https://www.mta.info/document/134521).
 
 ## Field Descriptions
 
 ### Entity ID
+
 - `id`: A unique identifier for each train update in the feed
 - Format: Usually a combination of numbers and route letter (e.g., `000001N`)
 
 ### Trip Information
+
 - `tripId`: Unique identifier for the train run  
   - Format: `HHMMSS_Route..Direction`  
   - Example: `141325_N..N` means it started at 14:13:25, is an N train, northbound
@@ -108,7 +130,9 @@ Adjust these values before starting the display. If you change the install path,
 - `routeId`: Route identifier (N, R, W, 4, 5, 6, etc.)
 
 ### Stop Time Updates (tripUpdate entity)
+
 Each stop entry contains:
+
 - `arrival.time`: Unix timestamp when the train will arrive
 - `departure.time`: Unix timestamp when it leaves
 - `stopId`: Station identifier  
@@ -116,12 +140,14 @@ Each stop entry contains:
   - Example: `R05N` → R train, 5th station, northbound
 
 ### Vehicle Information (vehicle entity)
+
 - `currentStopSequence`: Sequence number of the train’s current/next stop
 - `currentStatus`: Train status (`STOPPED_AT`, `INCOMING_AT`, `IN_TRANSIT_TO`, `OUT_OF_SERVICE`)
 - `timestamp`: Unix timestamp when the vehicle position was recorded
 - `stopId`: The stop ID where the train is currently located (when provided)
 
 ## Troubleshooting
+
 - Logs: `logs/mta_debug.log` (written each run)
 - Matrix flicker/ghosting: try lowering `Config.Hardware.BRIGHTNESS` or tweaking `GPIO_SLOWDOWN`
 - Nothing drawn: verify font/icon paths and that tmux session is running

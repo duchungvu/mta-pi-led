@@ -25,6 +25,7 @@ from mta_pi_led.services.display_scheduler import (
     DisplaySchedule,
     DisplayView,
     create_display_schedule,
+    get_active_index,
     get_active_view,
 )
 
@@ -48,14 +49,14 @@ class Config:
         """File paths for fonts and icons"""
         FONT = '../fonts/4x6.bdf'
         ROUTE_ICONS = {
-            'F': '../icons/F_black.png',
-            'M': '../icons/M_black.png',
+            'F': '../icons/F.png',
+            'M': '../icons/M.png',
         }
     
     class Layout:
         """Display layout positions and sizes"""
         ICON_SIZE = (18, 18)
-        ICON_POSITION = (1, 7)
+        ICON_POSITION = (1, 8)
         
         STATION_NAME_POSITION = (1, 6)
         
@@ -95,9 +96,12 @@ class Config:
     class Display:
         """Display behavior settings"""
         ARRIVALS_PER_DIRECTION = 3  # Show 3 arrival times per direction
-        STATION_NAME_MAX_LENGTH = 5
+        STATION_NAME_VISIBLE_CHARS = 5
+        STATION_NAME_SCROLL_GAP = 3
+        STATION_NAME_SCROLL_STEP_SECONDS = 0.18
         ROTATION_INTERVAL = 10
         REFRESH_INTERVAL = 30
+        UI_TICK_INTERVAL = 0.12
         TIME_MAX_CHARS = 3  # Max characters per time box
     
     class MTA:
@@ -115,6 +119,11 @@ class MTALEDDisplay:
     
     def __init__(self, station_id: str = Config.MTA.STATION):
         self.station_id = self._validate_station(station_id)
+        self.route_icon_cache: Dict[str, Image.Image] = {}
+        self._station_scroll_station_id = self.station_id
+        self._station_scroll_index = 0
+        self._station_scroll_last_update = time.time()
+        self._preload_route_icons()
         
         # Initialize hardware
         self.matrix = self._setup_matrix()
@@ -136,6 +145,9 @@ class MTALEDDisplay:
         validated_station = self._validate_station(station_id)
         if validated_station != self.station_id:
             self.station_id = validated_station
+            self._station_scroll_station_id = self.station_id
+            self._station_scroll_index = 0
+            self._station_scroll_last_update = time.time()
             print(
                 f"🔁 Switching station to {get_station_name(self.station_id)} "
                 f"({self.station_id})"
@@ -164,31 +176,142 @@ class MTALEDDisplay:
         except Exception as e:
             print(f"✗ Font loading failed: {e}")
             return None
+
+    def _resolve_asset_path(self, path_str: str) -> str:
+        """Resolve asset path against src/ directory."""
+        candidate = Path(path_str).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path(__file__).resolve().parent / candidate).resolve()
+        return str(candidate)
+
+    def _get_resample_mode(self):
+        """Return Pillow resampling mode compatible with installed version."""
+        if hasattr(Image, "Resampling"):
+            return Image.Resampling.LANCZOS
+        return Image.LANCZOS
     
-    def _get_route_icon_path(self, route: str) -> Optional[str]:
-        """Return icon path for given route"""
+    def _get_route_icon_candidates(self, route: str) -> List[str]:
+        """Return ordered icon path candidates for given route."""
+        route_key = (route or "").strip().upper()
+        if not route_key:
+            return []
+
         icons = getattr(Config.Files, 'ROUTE_ICONS', {})
-        if route in icons:
-            return icons[route]
-        if icons:
-            return next(iter(icons.values()))
-        return None
+        candidates: List[str] = []
+
+        if route_key in icons:
+            candidates.append(icons[route_key])
+
+        # Prefer new suffix-free filename, then legacy name for compatibility.
+        candidates.append(f"../icons/{route_key}.png")
+        candidates.append(f"../icons/{route_key}_black.png")
+
+        resolved_candidates: List[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            resolved = self._resolve_asset_path(candidate)
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            resolved_candidates.append(resolved)
+        return resolved_candidates
+
+    def _preload_route_icons(self):
+        """Load available route icons into memory before runtime rendering."""
+        icons_dir = (Path(__file__).resolve().parent / "../icons").resolve()
+        resample_mode = self._get_resample_mode()
+
+        # Load route icons from both new and legacy filenames.
+        if icons_dir.is_dir():
+            for pattern in ("*.png", "*_black.png"):
+                for icon_path in icons_dir.glob(pattern):
+                    route_key = icon_path.stem.replace("_black", "").strip().upper()
+                    if not route_key or route_key in self.route_icon_cache:
+                        continue
+                    try:
+                        image = Image.open(icon_path).convert('RGB')
+                        image = image.resize(Config.Layout.ICON_SIZE, resample_mode)
+                        self.route_icon_cache[route_key] = image
+                    except Exception:
+                        continue
+
+        # Ensure explicitly configured icons are also attempted.
+        icon_map = getattr(Config.Files, "ROUTE_ICONS", {})
+        for route_key, raw_path in icon_map.items():
+            normalized_route = str(route_key).strip().upper()
+            if not normalized_route or normalized_route in self.route_icon_cache:
+                continue
+            try:
+                resolved = self._resolve_asset_path(raw_path)
+                image = Image.open(resolved).convert('RGB')
+                image = image.resize(Config.Layout.ICON_SIZE, resample_mode)
+                self.route_icon_cache[normalized_route] = image
+            except Exception:
+                continue
 
     def _display_line_logo(self, route: str, position: Tuple[int, int]) -> bool:
         """Load and display route icon at specified position"""
-        icon_path = self._get_route_icon_path(route)
-        if not icon_path:
-            print("✗ No route icon configured")
-            return False
-        try:
-            image = Image.open(icon_path)
-            image = image.resize(Config.Layout.ICON_SIZE, Image.Resampling.LANCZOS)
-            image = image.convert('RGB')
-            self.canvas.SetImage(image, position[0], position[1])
+        route_key = (route or "").strip().upper()
+        if route_key in self.route_icon_cache:
+            self.canvas.SetImage(self.route_icon_cache[route_key], position[0], position[1])
             return True
-        except Exception as e:
-            print(f"✗ Error displaying route icon for {route}: {e}")
+
+        icon_candidates = self._get_route_icon_candidates(route)
+        if not icon_candidates:
             return False
+
+        last_error: Optional[Exception] = None
+        resample_mode = self._get_resample_mode()
+        for icon_path in icon_candidates:
+            try:
+                image = Image.open(icon_path)
+                image = image.resize(Config.Layout.ICON_SIZE, resample_mode)
+                image = image.convert('RGB')
+                self.route_icon_cache[route_key] = image
+                self.canvas.SetImage(image, position[0], position[1])
+                return True
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        if last_error is not None:
+            print(f"✗ Error displaying route icon for {route}: {last_error}")
+        return False
+
+    def _draw_route_fallback(self, route: str):
+        """Draw route text when no icon asset exists."""
+        text = route[:2].upper()
+        x = Config.Layout.ICON_POSITION[0] + 2
+        y = Config.Layout.ICON_POSITION[1] + Config.Layout.CHAR_HEIGHT
+        self._draw_text(text, (x, y), Config.Colors.WHITE)
+
+    def _get_station_name_window(self) -> str:
+        """Get station name text window; scroll if it exceeds visible width."""
+        station_name = get_station_name(self.station_id)
+        visible_chars = Config.Display.STATION_NAME_VISIBLE_CHARS
+        if self._station_scroll_station_id != self.station_id:
+            self._station_scroll_station_id = self.station_id
+            self._station_scroll_index = 0
+            self._station_scroll_last_update = time.time()
+
+        if len(station_name) <= visible_chars:
+            self._station_scroll_index = 0
+            self._station_scroll_last_update = time.time()
+            return station_name
+
+        gap = max(1, Config.Display.STATION_NAME_SCROLL_GAP)
+        scroll_step = max(0.1, Config.Display.STATION_NAME_SCROLL_STEP_SECONDS)
+        cycle_text = station_name + (" " * gap)
+
+        now = time.time()
+        elapsed = now - self._station_scroll_last_update
+        if elapsed >= scroll_step:
+            steps = int(elapsed / scroll_step)
+            self._station_scroll_index = (self._station_scroll_index + steps) % len(cycle_text)
+            self._station_scroll_last_update += steps * scroll_step
+
+        rolling_text = cycle_text + cycle_text
+        return rolling_text[self._station_scroll_index : self._station_scroll_index + visible_chars]
     
     def _format_single_time(self, time_str: str) -> str:
         """Format a single arrival time to fit in 3 characters"""
@@ -265,19 +388,40 @@ class MTALEDDisplay:
     
     def _draw_station_info(self, route: str):
         """Draw station information: line logo + station name"""
-        # Line logo (e.g., F train icon)
-        self._display_line_logo(route, Config.Layout.ICON_POSITION)
-        
-        # Station name (e.g., "57th St")
-        station_name = get_station_name(self.station_id)[:Config.Display.STATION_NAME_MAX_LENGTH]
-        print(f"Station name: {station_name}")
-        self._draw_text(station_name, Config.Layout.STATION_NAME_POSITION, Config.Colors.WHITE)
+        # Clear header regions so station/route updates do not leave stale pixels.
+        self.clear_area(Config.Layout.ICON_POSITION, Config.Layout.ICON_SIZE)
+        station_clear_width = Config.Display.STATION_NAME_VISIBLE_CHARS * Config.Layout.CHAR_WIDTH
+        station_clear_top = max(
+            0,
+            Config.Layout.STATION_NAME_POSITION[1] - Config.Layout.CHAR_HEIGHT - 1,
+        )
+        station_clear_height = Config.Layout.CHAR_HEIGHT + 2
+        self.clear_area(
+            (
+                Config.Layout.STATION_NAME_POSITION[0],
+                station_clear_top,
+            ),
+            (station_clear_width, station_clear_height),
+        )
+
+        # Line logo (e.g., F train icon). If no asset exists, draw route text.
+        if not self._display_line_logo(route, Config.Layout.ICON_POSITION):
+            print(f"⚠️ Icon unavailable for route {route}; using text fallback")
+            self._draw_route_fallback(route)
+
+        # Station name (scrolling window for long names)
+        station_name_window = self._get_station_name_window()
+        self._draw_text(
+            station_name_window,
+            Config.Layout.STATION_NAME_POSITION,
+            Config.Colors.WHITE,
+        )
     
     def clear_area(self, position: Tuple[int, int], size: Tuple[int, int]):
         """Clear an area of the canvas"""
         for col in range(position[0], position[0] + size[0]):
             for row in range(position[1], position[1] + size[1]):
-                if col < Config.Hardware.COLS and row < Config.Hardware.ROWS:
+                if 0 <= col < Config.Hardware.COLS and 0 <= row < Config.Hardware.ROWS:
                     self.canvas.SetPixel(col, row, 0, 0, 0)
     
     def _draw_direction_label(self, direction_name: str, label_position: Tuple[int, int]):
@@ -440,6 +584,29 @@ def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
     return schedule
 
 
+def select_available_view(
+    schedule: DisplaySchedule,
+    unavailable_until: Dict[Tuple[str, str], int],
+    now_ts: int,
+) -> Optional[DisplayView]:
+    """Select active view, skipping routes marked unavailable."""
+    if not schedule.views:
+        return None
+
+    base_index = get_active_index(schedule, now_ts=now_ts)
+    if base_index is None:
+        return None
+
+    for offset in range(len(schedule.views)):
+        idx = (base_index + offset) % len(schedule.views)
+        candidate = schedule.views[idx]
+        key = (candidate.station_id, candidate.route_id)
+        if unavailable_until.get(key, 0) <= now_ts:
+            return candidate
+
+    return None
+
+
 def main():
     """Run real-time MTA display"""
     board_config = load_board_config()
@@ -460,6 +627,8 @@ def main():
 
     # Cache arrivals by (station, route) so views can rotate faster than feed refresh.
     arrival_cache: Dict[Tuple[str, str], Tuple[int, List[str], List[str]]] = {}
+    # Temporarily skip views with no live arrivals.
+    unavailable_until: Dict[Tuple[str, str], int] = {}
     last_citibike_fetch_ts = 0
     
     try:
@@ -467,9 +636,13 @@ def main():
 
         while True:
             now_ts = int(time.time())
-            active_view = get_active_view(schedule, now_ts=now_ts)
+            active_view = select_available_view(
+                schedule=schedule,
+                unavailable_until=unavailable_until,
+                now_ts=now_ts,
+            )
             if active_view is None:
-                time.sleep(1)
+                time.sleep(Config.Display.UI_TICK_INTERVAL)
                 continue
 
             if display.station_id != active_view.station_id:
@@ -497,10 +670,19 @@ def main():
                     uptown, downtown = [], []
 
                 if not uptown and not downtown:
-                    print("⚠️ Using fallback data (no real data available)")
-                    uptown, downtown = ['No', 'Data'], ['Check', 'API']
+                    unavailable_until[cache_key] = (
+                        now_ts + Config.Display.REFRESH_INTERVAL
+                    )
+                    arrival_cache.pop(cache_key, None)
+                    print(
+                        f"⚠️ Skipping unavailable view {cache_key[0]}:{cache_key[1]} "
+                        f"for {Config.Display.REFRESH_INTERVAL}s"
+                    )
+                    time.sleep(Config.Display.UI_TICK_INTERVAL)
+                    continue
 
                 arrival_cache[cache_key] = (now_ts, uptown, downtown)
+                unavailable_until.pop(cache_key, None)
             else:
                 _, uptown, downtown = cached_arrivals
 
@@ -515,9 +697,11 @@ def main():
                 last_citibike_fetch_ts = now_ts
 
             sleep_seconds = min(
-                Config.Display.REFRESH_INTERVAL, Config.Display.ROTATION_INTERVAL
+                Config.Display.REFRESH_INTERVAL,
+                Config.Display.ROTATION_INTERVAL,
+                Config.Display.UI_TICK_INTERVAL,
             )
-            sleep_seconds = max(1, sleep_seconds)
+            sleep_seconds = max(0.2, sleep_seconds)
             time.sleep(sleep_seconds)
             
     except KeyboardInterrupt:

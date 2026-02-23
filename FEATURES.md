@@ -15,6 +15,8 @@
 - Renamed main display runtime entrypoint to `src/led_board.py` (legacy wrapper kept at `src/image_display.py`).
 - Added shared display scheduler service (`display_scheduler`) for station/line view rotation.
 - Board rotates across configured station/line views using `rotation_seconds`, with cached arrivals keyed by `(station, line)`.
+- Station name now auto-scrolls when it exceeds available display width.
+- Board skips routes with no live arrivals and retries them after refresh cooldown.
 - Phase 1 repo baseline completed:
   - Added package root at `src/mta_pi_led/`
   - Moved Citi Bike service into `src/mta_pi_led/services/citibike.py`

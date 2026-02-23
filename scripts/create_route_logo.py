@@ -5,7 +5,7 @@ Convert a manually downloaded NYC Subway route bullet into a flattened PNG.
 Workflow:
   1. Run the script. If the raw icon is missing, it prints the Wikimedia URL.
   2. Download the file (save as icons/<ROUTE>.png by default).
-  3. Run the script again to crop/scale/flatten into icons/<ROUTE>_black.png.
+  3. Run the script again to crop/scale/flatten into icons/<ROUTE>.png.
 """
 
 import argparse
@@ -223,7 +223,7 @@ def parse_args():
     parser.add_argument(
         "--output",
         type=Path,
-        help="Output path. Default: icons/<ROUTE>_black.png within the repo.",
+        help="Output path. Default: icons/<ROUTE>.png within the repo.",
     )
     return parser.parse_args()
 
@@ -233,7 +233,7 @@ def main() -> int:
     route = args.route.upper()
     size = args.size
     input_path = args.input or (PROJECT_ROOT / "icons" / f"{route}.png")
-    output_path = args.output or (PROJECT_ROOT / "icons" / f"{route}_black.png")
+    output_path = args.output or (PROJECT_ROOT / "icons" / f"{route}.png")
 
     if not input_path.exists():
         url = build_download_url(route, size)

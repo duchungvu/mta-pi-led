@@ -60,12 +60,21 @@ def get_active_view(
     schedule: DisplaySchedule, now_ts: int | None = None
 ) -> DisplayView | None:
     """Return currently active view based on Unix timestamp."""
+    active_index = get_active_index(schedule, now_ts=now_ts)
+    if active_index is None:
+        return None
+    return schedule.views[active_index]
+
+
+def get_active_index(
+    schedule: DisplaySchedule, now_ts: int | None = None
+) -> int | None:
+    """Return active view index based on Unix timestamp."""
     if not schedule.views:
         return None
 
     current_ts = int(now_ts if now_ts is not None else time.time())
-    index = (current_ts // schedule.interval_seconds) % len(schedule.views)
-    return schedule.views[index]
+    return (current_ts // schedule.interval_seconds) % len(schedule.views)
 
 
 def _as_positive_interval(value: int) -> int:

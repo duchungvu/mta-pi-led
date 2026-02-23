@@ -69,7 +69,7 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
 - `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
 - `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
 - `Config.Files.FONT`: bitmap font path
-- Need another route icon? Run `./scripts/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it into `icons/<ROUTE>_black.png`.
+- Need another route icon? Run `./scripts/create_route_logo.py <ROUTE>`. If `icons/<ROUTE>.png` is missing, the script prints the official Wikimedia download link—save the file there (e.g., `icons/5.png`), then rerun to crop/flatten it in place.
 
 Adjust these values before starting the display. Scripts now auto-detect the project root from their own location. You can still override with environment variables (for example `PROJECT_DIR`, `SESSION_NAME`, `BOARD_CONFIG_PATH`).
 

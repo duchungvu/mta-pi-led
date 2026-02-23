@@ -1,0 +1,9 @@
+{
+  "stations": [
+    "B10"
+  ],
+  "rotation_seconds": 10,
+  "refresh_seconds": 30,
+  "citibike_station_id": "66dbc551-0aca-11e7-82f6-3863bb44ef7c"
+}
+

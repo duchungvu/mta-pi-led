@@ -3,7 +3,8 @@
 
 SESSION_NAME="mta-display"
 PROJECT_DIR="/home/hung/mta-pi-led"
-SCRIPT_PATH="$PROJECT_DIR/src/image_display.py"
+RUNTIME_SCRIPT="led_board.py"
+SCRIPT_PATH="$PROJECT_DIR/src/$RUNTIME_SCRIPT"
 
 echo "🚇 Starting MTA LED Display..."
 
@@ -25,7 +26,7 @@ fi
 # Create new tmux session and run the display
 tmux new-session -d -s "$SESSION_NAME" -c "$PROJECT_DIR"
 tmux send-keys -t "$SESSION_NAME" "cd $PROJECT_DIR/src" C-m
-tmux send-keys -t "$SESSION_NAME" "sudo python3 image_display.py" C-m
+tmux send-keys -t "$SESSION_NAME" "sudo python3 $RUNTIME_SCRIPT" C-m
 
 echo "✓ MTA display started in tmux session '$SESSION_NAME'"
 echo ""
@@ -47,4 +48,3 @@ else
     echo "❌ Display failed to start. Check for errors."
     exit 1
 fi
-

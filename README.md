@@ -1,6 +1,6 @@
 # MTA Pi LED Display
 
-Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The display loop and hardware control live in `src/image_display.py`.
+Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The display loop and hardware control live in `src/led_board.py`.
 
 ## What it Shows
 
@@ -43,7 +43,7 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
    ```
 
 3) Keep assets in place  
-   Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in `src/image_display.py`.
+   Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in `src/led_board.py`.
 
 4) Sync code to the Pi (from your dev machine)
 
@@ -58,12 +58,14 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
    ssh hung@hung-rpi.local
    ```
 
-## Configuration (src/image_display.py)
+## Configuration
 
-- `Config.MTA.STATION`: station code (default `B10`, 57 St F/M)
-- `Config.MTA.ROUTES`: preferred lines (default `["F","M"]`; display picks the first with live arrivals and swaps the icon accordingly)
-- `Config.CitiBike.STATION_ID`: Citi Bike station ID to query
-- `Config.Display.REFRESH_INTERVAL`: seconds between updates
+- Runtime board settings live in `config/board.json`:
+  - `stations`: station codes to display (current runtime uses the first station)
+  - `rotation_seconds`: line/station rotation interval (wired for upcoming rotation logic)
+  - `refresh_seconds`: seconds between data refreshes
+  - `citibike_station_id`: Citi Bike station ID to query
+- Hardware/layout defaults live in `src/led_board.py` (`Config.Hardware`, `Config.Layout`, colors/fonts/icons).
 - `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
 - `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
 - `Config.Files.FONT`: bitmap font path
@@ -74,7 +76,7 @@ Adjust these values before starting the display. If you change the install path,
 ## Run / Stop
 
 - Start: `./scripts/start-display.sh`  
-  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 image_display.py`.
+  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 led_board.py`.
 - Stop: `./scripts/stop-display.sh`
 - Restart: `./scripts/restart-display.sh`
 - Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)

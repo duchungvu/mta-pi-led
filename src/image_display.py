@@ -6,6 +6,7 @@ Fetches live MTA data and displays on 64x32 LED matrix with 30-second refresh
 
 import sys
 import time
+from pathlib import Path
 from typing import Tuple, List, Optional, Dict
 
 sys.path.append('/home/hung/rpi-rgb-led-matrix/bindings/python')
@@ -13,10 +14,13 @@ sys.path.append('/home/hung/rpi-rgb-led-matrix/bindings/python')
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 from PIL import Image
 from datetime import datetime
-# Import Citi Bike data functions
-import sys
-sys.path.append('../citibike')
-from citibike import get_station_data, get_station_info
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+# Import Citi Bike data functions from package path
+from mta_pi_led.services.citibike import get_station_data
 
 # Import MTA data functions
 from app import get_train_status
@@ -304,15 +308,6 @@ class MTALEDDisplay:
         x, y = position
         
         icon_pattern = [
-            [0, 1, 0, 1, 0],
-            [0, 1, 0, 1, 0], 
-            [1, 1, 1, 1, 1],  
-            [0, 0, 1, 0, 0],  
-            [1, 0, 1, 0, 0],  
-            [1, 1, 1, 0, 0]   
-        ]
-
-        icon_pattern = [
             [0, 0, 1, 0],
             [0, 1, 0, 0], 
             [1, 1, 1, 1],  
@@ -354,15 +349,15 @@ class MTALEDDisplay:
         # Update display
         self.matrix.SwapOnVSync(self.canvas)
         
-    def show_citibike_station_info(self):
-        """Show Cibike station info"""
+    def draw_citibike_icons(self):
+        """Draw Citi Bike icons (not shown by default)"""
         self._draw_bike(Config.Layout.BIKE_ICON_POSITION, Config.Colors.DAZZLING_BLUE)
         self._draw_ebike(Config.Layout.EBIKE_ICON_POSITION, Config.Colors.DAZZLING_BLUE)
 
     def show_citibike_status(self, data: Dict):
         """Show Cibike status"""
-        num_normal_bikes = data['num_bikes_available'] - data['num_ebikes_available']
-        num_ebikes = data['num_ebikes_available']
+        num_normal_bikes = max(0, data.get('num_bikes_available', 0) - data.get('num_ebikes_available', 0))
+        num_ebikes = max(0, data.get('num_ebikes_available', 0))
 
         bike_time_position = [Config.Layout.BIKE_ICON_POSITION[0] + 11, Config.Layout.BIKE_ICON_POSITION[1] + 6]
         ebike_time_position = [Config.Layout.EBIKE_ICON_POSITION[0] + 5, Config.Layout.EBIKE_ICON_POSITION[1] + 6]
@@ -388,13 +383,13 @@ def main():
     try:
         display.clear()
         display.show_mta_station_info(current_route, ['UPTOWN', 'DOWNTOWN'])
-        display.show_citibike_station_info()
-        station_info = get_station_info("W 56 St & 6 Ave")
-        print(f"Station Info: {station_info}")
+        station_id = Config.CitiBike.STATION_ID
 
         while True:
             try:
-                citibike_data = get_station_data(station_info['station_id'])
+                citibike_data = get_station_data(station_id)
+                if not citibike_data:
+                    raise ValueError("Citi Bike station not found or status unavailable")
             except Exception as e:
                 print(f"Error getting citibike data: {e}")
                 citibike_data = {
@@ -418,7 +413,6 @@ def main():
             
             # Update display
             display.show_mta_arrival_times(current_route, uptown, downtown)
-            display.show_citibike_status(citibike_data)
             
             # Wait for next update
             print(f"⏰ Next update in {Config.Display.REFRESH_INTERVAL} seconds... (Ctrl+C to stop)")

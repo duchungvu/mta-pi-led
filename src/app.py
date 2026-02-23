@@ -14,18 +14,23 @@ app = Flask(__name__)
 STATIONS = load_station_data()
 ROUTES = load_route_data()
 
+LOG_DIR = os.path.join(os.path.dirname(__file__), '..', 'logs')
+LOG_PATH = os.path.join(LOG_DIR, 'mta_debug.log')
+
 def clear_log_file():
     # Clear the log file
     try:
-        with open('../logs/mta_debug.log', 'w') as f:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(LOG_PATH, 'w') as f:
             f.write('')
     except PermissionError:
         pass  # Skip if can't write to log
 
 def setup_logging():
     try:
+        os.makedirs(LOG_DIR, exist_ok=True)
         logging.basicConfig(
-            filename='../logs/mta_debug.log',
+            filename=LOG_PATH,
             level=logging.DEBUG,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
@@ -93,7 +98,8 @@ def process_feed(feed_url, route_times, current_time, selected_station):
         feed_url, 
         headers={
             'Accept': 'application/x-google-protobuf'
-        }
+        },
+        timeout=10
     )
     response.raise_for_status()
     

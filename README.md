@@ -82,7 +82,7 @@ Adjust these values before starting the display. If you change the install path,
 ## Data Sources
 
 - MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/app.py` via `get_train_status`.
-- Citi Bike: station info/status via `citibike/citibike.py`.
+- Citi Bike: station info/status via `src/mta_pi_led/services/citibike.py` (legacy wrapper remains at `citibike/citibike.py`).
 
 ## MTA GTFS-Realtime Feed Overview
 

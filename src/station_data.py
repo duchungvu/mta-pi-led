@@ -1,17 +1,20 @@
 import json
+import os
 
 # Global variable to store station data
 _station_data = None
+
+DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'mta_stations.json')
 
 def load_station_data():
     """Load station data from JSON file and return it."""
     global _station_data
     if _station_data is None:
         try:
-            with open('../data/mta_stations.json', 'r') as f:
+            with open(DATA_PATH, 'r') as f:
                 _station_data = json.load(f)
         except FileNotFoundError:
-            raise Exception("Station data file (../data/mta_stations.json) not found. Please run create_station_db.py first.")
+            raise Exception(f"Station data file ({DATA_PATH}) not found. Please run create_station_db.py first.")
     return _station_data
 
 def is_valid_station(station_id):

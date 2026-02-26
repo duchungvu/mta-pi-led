@@ -25,13 +25,15 @@ from mta_pi_led.services.display_scheduler import (
     DisplaySchedule,
     DisplayView,
     create_display_schedule,
-    get_active_index,
-    get_active_view,
 )
 
 # Import MTA data functions
 from app import get_train_status
 from station_data import get_station_lines, is_valid_station, get_station_name
+
+CacheKey = Tuple[str, str]
+ArrivalCacheValue = Tuple[int, List[str], List[str]]
+
 
 # Configuration Constants
 class Config:
@@ -48,10 +50,8 @@ class Config:
     class Files:
         """File paths for fonts and icons"""
         FONT = '../fonts/4x6.bdf'
-        ROUTE_ICONS = {
-            'F': '../icons/F.png',
-            'M': '../icons/M.png',
-        }
+        # Optional per-route icon path overrides.
+        ROUTE_ICONS: Dict[str, str] = {}
     
     class Layout:
         """Display layout positions and sizes"""
@@ -221,19 +221,18 @@ class MTALEDDisplay:
         icons_dir = (Path(__file__).resolve().parent / "../icons").resolve()
         resample_mode = self._get_resample_mode()
 
-        # Load route icons from both new and legacy filenames.
+        # Load route icons from icons/ directory.
         if icons_dir.is_dir():
-            for pattern in ("*.png", "*_black.png"):
-                for icon_path in icons_dir.glob(pattern):
-                    route_key = icon_path.stem.replace("_black", "").strip().upper()
-                    if not route_key or route_key in self.route_icon_cache:
-                        continue
-                    try:
-                        image = Image.open(icon_path).convert('RGB')
-                        image = image.resize(Config.Layout.ICON_SIZE, resample_mode)
-                        self.route_icon_cache[route_key] = image
-                    except Exception:
-                        continue
+            for icon_path in icons_dir.glob("*.png"):
+                route_key = icon_path.stem.replace("_black", "").strip().upper()
+                if not route_key or route_key in self.route_icon_cache:
+                    continue
+                try:
+                    image = Image.open(icon_path).convert('RGB')
+                    image = image.resize(Config.Layout.ICON_SIZE, resample_mode)
+                    self.route_icon_cache[route_key] = image
+                except Exception:
+                    continue
 
         # Ensure explicitly configured icons are also attempted.
         icon_map = getattr(Config.Files, "ROUTE_ICONS", {})
@@ -563,16 +562,44 @@ def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
         if not is_valid_station(station_id):
             print(f"⚠️ Skipping invalid station in schedule: {station_id}")
             return []
-        return get_station_lines(station_id)
+
+        static_lines = [line.strip().upper() for line in get_station_lines(station_id)]
+        live_lines: List[str] = []
+
+        # Merge live feed routes so schedule can rotate newly active lines
+        # even when station_data.py is behind.
+        try:
+            live_data = get_train_status(station_id)
+            if live_data.get("status") == "success":
+                live_lines = [
+                    str(route).strip().upper()
+                    for route in live_data.get("trains", {}).keys()
+                    if str(route).strip()
+                ]
+        except Exception as exc:
+            print(f"⚠️ Could not load live routes for {station_id}: {exc}")
+
+        merged: List[str] = []
+        seen: set[str] = set()
+        for route in static_lines + live_lines:
+            if not route or route in seen:
+                continue
+            seen.add(route)
+            merged.append(route)
+        return merged
 
     fallback_route = Config.MTA.ROUTES[0] if Config.MTA.ROUTES else "F"
     if is_valid_station(Config.MTA.STATION):
-        station_lines = get_station_lines(Config.MTA.STATION)
-        if station_lines:
-            fallback_route = station_lines[0]
+        fallback_lines = _line_lookup(Config.MTA.STATION)
+        if fallback_lines:
+            fallback_route = fallback_lines[0]
+
+    valid_station_ids = [station_id for station_id in station_ids if is_valid_station(station_id)]
+    if not valid_station_ids:
+        valid_station_ids = [Config.MTA.STATION]
 
     schedule = create_display_schedule(
-        station_ids=station_ids,
+        station_ids=valid_station_ids,
         line_lookup=_line_lookup,
         interval_seconds=Config.Display.ROTATION_INTERVAL,
         default_view=DisplayView(
@@ -590,27 +617,65 @@ def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
     return schedule
 
 
-def select_available_view(
+def get_available_view_index(
     schedule: DisplaySchedule,
-    unavailable_until: Dict[Tuple[str, str], int],
+    start_index: int,
+    unavailable_until: Dict[CacheKey, int],
     now_ts: int,
-) -> Optional[DisplayView]:
-    """Select active view, skipping routes marked unavailable."""
+) -> Optional[int]:
+    """Get next available schedule index, skipping unavailable routes."""
     if not schedule.views:
         return None
 
-    base_index = get_active_index(schedule, now_ts=now_ts)
-    if base_index is None:
-        return None
+    normalized_start = start_index % len(schedule.views)
 
     for offset in range(len(schedule.views)):
-        idx = (base_index + offset) % len(schedule.views)
+        idx = (normalized_start + offset) % len(schedule.views)
         candidate = schedule.views[idx]
         key = (candidate.station_id, candidate.route_id)
         if unavailable_until.get(key, 0) <= now_ts:
-            return candidate
+            return idx
 
     return None
+
+
+def is_cache_stale(
+    cached_arrivals: Optional[ArrivalCacheValue], now_ts: int
+) -> bool:
+    """Return True when cached arrivals need refresh."""
+    return (
+        cached_arrivals is None
+        or (now_ts - cached_arrivals[0]) >= Config.Display.REFRESH_INTERVAL
+    )
+
+
+def refresh_view_arrivals(
+    display: MTALEDDisplay,
+    current_route: str,
+    now_ts: int,
+    arrival_cache: Dict[CacheKey, ArrivalCacheValue],
+    unavailable_until: Dict[CacheKey, int],
+) -> Tuple[List[str], List[str], bool]:
+    """Refresh arrivals for active view; return times and availability."""
+    route, uptown, downtown = display.get_realtime_data(
+        [current_route]
+    )
+    if not route:
+        uptown, downtown = [], []
+
+    cache_key = (display.station_id, current_route)
+    if not uptown and not downtown:
+        unavailable_until[cache_key] = now_ts + Config.Display.REFRESH_INTERVAL
+        arrival_cache.pop(cache_key, None)
+        print(
+            f"⚠️ Skipping unavailable view {cache_key[0]}:{cache_key[1]} "
+            f"for {Config.Display.REFRESH_INTERVAL}s"
+        )
+        return uptown, downtown, False
+
+    arrival_cache[cache_key] = (now_ts, uptown, downtown)
+    unavailable_until.pop(cache_key, None)
+    return uptown, downtown, True
 
 
 def main():
@@ -618,38 +683,55 @@ def main():
     board_config = load_board_config()
     apply_board_config(board_config)
     schedule = build_display_schedule(board_config.stations)
-    active_view = get_active_view(schedule)
-    if active_view is None:
+    if not schedule.views:
         print("✗ No display views available. Exiting.")
         return
 
+    unavailable_until: Dict[CacheKey, int] = {}
+    initial_index = get_available_view_index(
+        schedule=schedule,
+        start_index=0,
+        unavailable_until=unavailable_until,
+        now_ts=int(time.time()),
+    )
+    if initial_index is None:
+        print("✗ No available display views. Exiting.")
+        return
+    active_index = initial_index
+    active_view = schedule.views[active_index]
+
     print(
-        f"🚇 Starting MTA display scheduler @ {Config.Display.ROTATION_INTERVAL}s "
+        f"🚇 Starting MTA display scheduler @ {schedule.interval_seconds}s "
         f"rotation, {Config.Display.REFRESH_INTERVAL}s refresh"
     )
     display = MTALEDDisplay(active_view.station_id)
     current_route = active_view.route_id
 
     # Cache arrivals by (station, route) so views can rotate faster than feed refresh.
-    arrival_cache: Dict[Tuple[str, str], Tuple[int, List[str], List[str]]] = {}
-    # Temporarily skip views with no live arrivals.
-    unavailable_until: Dict[Tuple[str, str], int] = {}
+    arrival_cache: Dict[CacheKey, ArrivalCacheValue] = {}
     last_citibike_fetch_ts = 0
     last_render_signature: Optional[Tuple[str, str, Tuple[str, ...], Tuple[str, ...], str]] = None
+    next_rotation_ts = time.time() + schedule.interval_seconds
     
     try:
         display.clear()
 
         while True:
-            now_ts = int(time.time())
-            active_view = select_available_view(
-                schedule=schedule,
-                unavailable_until=unavailable_until,
-                now_ts=now_ts,
-            )
-            if active_view is None:
-                time.sleep(Config.Display.UI_TICK_INTERVAL)
-                continue
+            now = time.time()
+            now_ts = int(now)
+
+            if now >= next_rotation_ts:
+                next_index = get_available_view_index(
+                    schedule=schedule,
+                    start_index=active_index + 1,
+                    unavailable_until=unavailable_until,
+                    now_ts=now_ts,
+                )
+                if next_index is not None:
+                    active_index = next_index
+                next_rotation_ts = now + schedule.interval_seconds
+
+            active_view = schedule.views[active_index]
 
             if display.station_id != active_view.station_id:
                 display.set_station(active_view.station_id)
@@ -659,35 +741,27 @@ def main():
                 print(f"🔁 Switching line to {current_route}")
 
             cache_key = (display.station_id, current_route)
-
             cached_arrivals = arrival_cache.get(cache_key)
-            cache_is_stale = (
-                cached_arrivals is None
-                or (now_ts - cached_arrivals[0]) >= Config.Display.REFRESH_INTERVAL
-            )
-
-            if cache_is_stale:
-                route, uptown, downtown = display.get_realtime_data([current_route])
-                if route:
-                    current_route = route
-                    cache_key = (display.station_id, current_route)
-                else:
-                    uptown, downtown = [], []
-
-                if not uptown and not downtown:
-                    unavailable_until[cache_key] = (
-                        now_ts + Config.Display.REFRESH_INTERVAL
+            if is_cache_stale(cached_arrivals, now_ts):
+                uptown, downtown, has_arrivals = refresh_view_arrivals(
+                    display=display,
+                    current_route=current_route,
+                    now_ts=now_ts,
+                    arrival_cache=arrival_cache,
+                    unavailable_until=unavailable_until,
+                )
+                if not has_arrivals:
+                    next_index = get_available_view_index(
+                        schedule=schedule,
+                        start_index=active_index + 1,
+                        unavailable_until=unavailable_until,
+                        now_ts=now_ts,
                     )
-                    arrival_cache.pop(cache_key, None)
-                    print(
-                        f"⚠️ Skipping unavailable view {cache_key[0]}:{cache_key[1]} "
-                        f"for {Config.Display.REFRESH_INTERVAL}s"
-                    )
+                    if next_index is not None and next_index != active_index:
+                        active_index = next_index
+                        next_rotation_ts = time.time() + schedule.interval_seconds
                     time.sleep(Config.Display.UI_TICK_INTERVAL)
                     continue
-
-                arrival_cache[cache_key] = (now_ts, uptown, downtown)
-                unavailable_until.pop(cache_key, None)
             else:
                 _, uptown, downtown = cached_arrivals
 
@@ -716,13 +790,7 @@ def main():
                     print(f"Error getting citibike data: {e}")
                 last_citibike_fetch_ts = now_ts
 
-            sleep_seconds = min(
-                Config.Display.REFRESH_INTERVAL,
-                Config.Display.ROTATION_INTERVAL,
-                Config.Display.UI_TICK_INTERVAL,
-            )
-            sleep_seconds = max(0.2, sleep_seconds)
-            time.sleep(sleep_seconds)
+            time.sleep(max(0.2, Config.Display.UI_TICK_INTERVAL))
             
     except KeyboardInterrupt:
         display.clear()

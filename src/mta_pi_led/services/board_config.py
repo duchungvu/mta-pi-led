@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ DEFAULT_STATIONS = ["B10"]
 DEFAULT_ROTATION_SECONDS = 10
 DEFAULT_REFRESH_SECONDS = 30
 DEFAULT_CITIBIKE_STATION_ID = "66dbc551-0aca-11e7-82f6-3863bb44ef7c"
+CONFIG_READ_RETRY_ATTEMPTS = 4
+CONFIG_READ_RETRY_DELAY_SECONDS = 0.12
 
 
 @dataclass(frozen=True)
@@ -30,12 +33,8 @@ class BoardConfig:
 
 def load_board_config(config_path: str | Path | None = None) -> BoardConfig:
     """Load board config from JSON with validation and safe defaults."""
-    path = _resolve_config_path(config_path)
-    payload: dict[str, Any] = {}
-
-    if path.exists():
-        with path.open("r", encoding="utf-8") as fh:
-            payload = json.load(fh)
+    path = resolve_board_config_path(config_path)
+    payload = _load_payload_with_retry(path)
 
     return BoardConfig(
         stations=_as_station_list(payload.get("stations")),
@@ -51,7 +50,8 @@ def load_board_config(config_path: str | Path | None = None) -> BoardConfig:
     )
 
 
-def _resolve_config_path(config_path: str | Path | None) -> Path:
+def resolve_board_config_path(config_path: str | Path | None = None) -> Path:
+    """Resolve board config path from argument, env var, or repo default."""
     if config_path is not None:
         return Path(config_path).expanduser()
 
@@ -60,6 +60,30 @@ def _resolve_config_path(config_path: str | Path | None) -> Path:
         return Path(env_path).expanduser()
 
     return Path(__file__).resolve().parents[3] / "config" / "board.json"
+
+
+def _load_payload_with_retry(path: Path) -> dict[str, Any]:
+    """Read config JSON with small retries to tolerate concurrent writes."""
+    last_error: Exception | None = None
+
+    for attempt in range(CONFIG_READ_RETRY_ATTEMPTS):
+        try:
+            if not path.exists():
+                return {}
+
+            with path.open("r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            if isinstance(payload, dict):
+                return payload
+            return {}
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError, OSError) as exc:
+            last_error = exc
+            if attempt < CONFIG_READ_RETRY_ATTEMPTS - 1:
+                time.sleep(CONFIG_READ_RETRY_DELAY_SECONDS)
+
+    if last_error is not None:
+        raise last_error
+    return {}
 
 
 def _as_station_list(value: Any) -> list[str]:
@@ -84,4 +108,3 @@ def _as_non_empty_str(value: Any, default: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return default
-

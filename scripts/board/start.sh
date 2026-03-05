@@ -9,7 +9,7 @@ SESSION_NAME="${SESSION_NAME:-mta-display}"
 RUNTIME_SCRIPT="${RUNTIME_SCRIPT:-led_board.py}"
 SCRIPT_PATH="$PROJECT_DIR/src/$RUNTIME_SCRIPT"
 BOARD_CONFIG_PATH="${BOARD_CONFIG_PATH:-$PROJECT_DIR/config/board.json}"
-ENABLE_RT_PINNING="${ENABLE_RT_PINNING:-1}"
+ENABLE_RT_PINNING="${ENABLE_RT_PINNING:-0}"
 DISPLAY_CPU_CORE="${DISPLAY_CPU_CORE:-3}"
 DISPLAY_RT_PRIORITY="${DISPLAY_RT_PRIORITY:-50}"
 
@@ -36,10 +36,12 @@ if [ ! -f "$BOARD_CONFIG_PATH" ]; then
     exit 1
 fi
 
-LAUNCH_CMD="sudo env BOARD_CONFIG_PATH='$BOARD_CONFIG_PATH' python3 '$RUNTIME_SCRIPT'"
+# Explicitly force root run-as user. Some sudoers configs default to a
+# non-root runas account (e.g., daemon), which can break config file reads.
+LAUNCH_CMD="sudo -u root env BOARD_CONFIG_PATH='$BOARD_CONFIG_PATH' python3 '$RUNTIME_SCRIPT'"
 if [ "$ENABLE_RT_PINNING" = "1" ]; then
     if command -v taskset >/dev/null 2>&1 && command -v chrt >/dev/null 2>&1; then
-        LAUNCH_CMD="sudo env BOARD_CONFIG_PATH='$BOARD_CONFIG_PATH' chrt -f '$DISPLAY_RT_PRIORITY' taskset -c '$DISPLAY_CPU_CORE' python3 '$RUNTIME_SCRIPT'"
+        LAUNCH_CMD="sudo -u root env BOARD_CONFIG_PATH='$BOARD_CONFIG_PATH' chrt -f '$DISPLAY_RT_PRIORITY' taskset -c '$DISPLAY_CPU_CORE' python3 '$RUNTIME_SCRIPT'"
         echo "⚙️  Launch mode: RT pinned (core=$DISPLAY_CPU_CORE, prio=$DISPLAY_RT_PRIORITY)"
     else
         echo "⚠️  taskset/chrt not available; falling back to standard launch"

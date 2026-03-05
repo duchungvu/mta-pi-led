@@ -65,6 +65,8 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
   - `rotation_seconds`: line/station rotation interval
   - `refresh_seconds`: seconds between data refreshes
   - `citibike_station_id`: Citi Bike station ID to query
+- The board runtime does one batched subway refresh pass per `refresh_seconds` across scheduled stations/routes, then rotates views from that cached snapshot.
+- `led_board.py` hot-reloads `config/board.json` on the same cadence as feed refresh (`refresh_seconds`, default 30s), so config edits apply without restarting the board process.
 - Hardware/layout defaults live in `src/led_board.py` (`Config.Hardware`, `Config.Layout`, colors/fonts/icons).
 - `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
 - `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
@@ -76,8 +78,9 @@ Adjust these values before starting the display. Scripts now auto-detect the pro
 ## Run / Stop
 
 - Start: `./scripts/board/start.sh`  
-  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo python3 led_board.py` with `BOARD_CONFIG_PATH`.
+  - Creates tmux session `mta-display`, `cd` into `src/`, and runs `sudo -u root python3 led_board.py` with `BOARD_CONFIG_PATH`.
 - Stop: `./scripts/board/stop.sh`
+  - Sends Ctrl+C to tmux process, closes the tmux session, and cleans orphan `led_board.py` processes.
 - Restart: `./scripts/board/restart.sh`
 - Attach to watch logs/output: `tmux attach -t mta-display` (Ctrl+B then D to detach)
 
@@ -86,7 +89,7 @@ Adjust these values before starting the display. Scripts now auto-detect the pro
 - Board runtime scripts: `scripts/board/`
 - Sync scripts: `scripts/sync/`
 - Utility/tools scripts (logo and data generation): `scripts/tools/`
-- Web debug launcher: `scripts/web/start-web.sh`
+- Web runtime scripts: `scripts/web/`
 
 ## Script Commands
 
@@ -97,12 +100,19 @@ Adjust these values before starting the display. Scripts now auto-detect the pro
 - Pi sync: `./scripts/sync/pi-sync.sh`
 - Generate route icon: `./scripts/tools/create_route_logo.py <ROUTE>`
 - Rebuild station DB: `./scripts/tools/create_station_db.py`
-- Start web debug app: `./scripts/web/start-web.sh`
+- Start web controller app: `./scripts/web/start.sh`
+- Stop web controller app: `./scripts/web/stop.sh`
+- Restart web controller app: `./scripts/web/restart.sh`
+- View web controller logs (attach tmux): `./scripts/web/view.sh`
+  - Open `http://localhost:5000` for Controller UI v1.
+  - Optional: `SESSION_NAME=mta-web`
+  - Optional: `ENABLE_NGROK=1` to open a second tmux window with `ngrok http <WEB_PORT>`
+  - Optional: `WEB_DEBUG=1 WEB_RELOADER=1` for Flask auto-reload during UI development
 
 ## Data Sources
 
 - MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/app.py` via `get_train_status`.
-- Citi Bike: station info/status via `src/mta_pi_led/services/citibike.py` (legacy wrapper remains at `citibike/citibike.py`).
+- Citi Bike: station info/status via `src/mta_pi_led/services/citibike.py`.
 
 ## MTA GTFS-Realtime Feed Overview
 

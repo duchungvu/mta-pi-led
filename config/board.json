@@ -1,6 +1,7 @@
 {
+  "version": 7,
   "stations": [
-    "R10"
+    "B10"
   ],
   "rotation_seconds": 5,
   "refresh_seconds": 30,

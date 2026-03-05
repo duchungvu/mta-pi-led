@@ -18,6 +18,7 @@ EXCLUDES=(
   --exclude ".cache"
   --exclude "dist"
   --exclude "build"
+  --exclude "logs"
   --exclude "*.pyc"
   --exclude "__pycache__"
 )

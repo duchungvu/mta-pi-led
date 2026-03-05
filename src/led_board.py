@@ -6,8 +6,9 @@ Fetches live MTA data and displays on 64x32 LED matrix with 30-second refresh
 
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, List, Optional, Dict, Sequence, Any
 
 sys.path.append('/home/hung/rpi-rgb-led-matrix/bindings/python')
 
@@ -19,7 +20,11 @@ if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # Import Citi Bike data functions from package path
-from mta_pi_led.services.board_config import BoardConfig, load_board_config
+from mta_pi_led.services.board_config import (
+    BoardConfig,
+    load_board_config,
+    resolve_board_config_path,
+)
 from mta_pi_led.services.citibike import get_station_data
 from mta_pi_led.services.display_scheduler import (
     DisplaySchedule,
@@ -28,11 +33,14 @@ from mta_pi_led.services.display_scheduler import (
 )
 
 # Import MTA data functions
-from app import get_train_status
+from app import get_train_status, get_train_status_batch
 from station_data import get_station_lines, is_valid_station, get_station_name
 
 CacheKey = Tuple[str, str]
 ArrivalCacheValue = Tuple[int, List[str], List[str]]
+StationFeedCacheValue = Tuple[int, Dict[str, Any]]
+RenderSignature = Tuple[str, str, Tuple[str, ...], Tuple[str, ...], str]
+DIRECTION_LABELS = ("UPTOWN", "DOWNTOWN")
 
 
 # Configuration Constants
@@ -111,7 +119,25 @@ class Config:
 
     class CitiBike:
         """Citi Bike station and route defaults"""
+        ENABLED = False
         STATION_ID = "66dbc551-0aca-11e7-82f6-3863bb44ef7c"
+
+
+@dataclass
+class RuntimeState:
+    """Mutable runtime state for the display loop."""
+
+    schedule: DisplaySchedule
+    active_index: int
+    current_route: str
+    next_rotation_ts: float
+    last_config_reload_check_ts: int
+    last_station_feed_refresh_ts: int = 0
+    last_citibike_fetch_ts: int = 0
+    last_render_signature: Optional[RenderSignature] = None
+    arrival_cache: Dict[CacheKey, ArrivalCacheValue] = field(default_factory=dict)
+    station_feed_cache: Dict[str, StationFeedCacheValue] = field(default_factory=dict)
+    unavailable_until: Dict[CacheKey, int] = field(default_factory=dict)
 
 
 class MTALEDDisplay:
@@ -332,21 +358,29 @@ class MTALEDDisplay:
             graphics.DrawText(self.canvas, self.font, position[0], position[1], 
                             graphics.Color(*color), text)
     
-    def get_realtime_data(self, routes: List[str]) -> Tuple[Optional[str], List[str], List[str]]:
+    def get_realtime_data(
+        self,
+        routes: Sequence[str],
+        station_data: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Optional[str], List[str], List[str]]:
         """Fetch real-time MTA data for preferred routes"""
         if isinstance(routes, str):
             routes_to_check = [routes]
         else:
-            routes_to_check = routes or []
+            routes_to_check = list(routes or [])
         
         if not routes_to_check:
             print("✗ No routes configured")
             return None, [], []
         
         try:
-            route_list_label = ", ".join(routes_to_check)
-            print(f"🔄 Fetching {route_list_label} data for {get_station_name(self.station_id)}...")
-            data = get_train_status(self.station_id)
+            data = station_data
+            if data is None:
+                print(
+                    f"🔄 Refreshing station feed for "
+                    f"{get_station_name(self.station_id)}..."
+                )
+                data = get_train_status(self.station_id)
             
             if data.get('status') != 'success':
                 print("✗ Train API returned error status")
@@ -485,7 +519,7 @@ class MTALEDDisplay:
     def show_mta_station_info(
         self,
         route: str,
-        directions: List[str],
+        directions: Sequence[str],
         station_name_window: Optional[str] = None,
     ):
         """Show MTA station info"""
@@ -563,25 +597,10 @@ def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
             print(f"⚠️ Skipping invalid station in schedule: {station_id}")
             return []
 
-        static_lines = [line.strip().upper() for line in get_station_lines(station_id)]
-        live_lines: List[str] = []
-
-        # Merge live feed routes so schedule can rotate newly active lines
-        # even when station_data.py is behind.
-        try:
-            live_data = get_train_status(station_id)
-            if live_data.get("status") == "success":
-                live_lines = [
-                    str(route).strip().upper()
-                    for route in live_data.get("trains", {}).keys()
-                    if str(route).strip()
-                ]
-        except Exception as exc:
-            print(f"⚠️ Could not load live routes for {station_id}: {exc}")
-
         merged: List[str] = []
         seen: set[str] = set()
-        for route in static_lines + live_lines:
+        for route in get_station_lines(station_id):
+            route = str(route).strip().upper()
             if not route or route in seen:
                 continue
             seen.add(route)
@@ -639,6 +658,11 @@ def get_available_view_index(
     return None
 
 
+def should_run_interval(last_run_ts: int, now_ts: int, interval_seconds: int) -> bool:
+    """Return True when interval has elapsed."""
+    return (now_ts - last_run_ts) >= interval_seconds
+
+
 def is_cache_stale(
     cached_arrivals: Optional[ArrivalCacheValue], now_ts: int
 ) -> bool:
@@ -649,17 +673,95 @@ def is_cache_stale(
     )
 
 
+def get_station_feed_data(
+    display: MTALEDDisplay,
+    station_feed_cache: Dict[str, StationFeedCacheValue],
+) -> Optional[Dict[str, Any]]:
+    """Return the latest cached station feed snapshot for the station."""
+    cached_station_feed = station_feed_cache.get(display.station_id)
+    if cached_station_feed is None:
+        return None
+    return cached_station_feed[1]
+
+
+def _schedule_station_ids(schedule: DisplaySchedule) -> List[str]:
+    station_ids: List[str] = []
+    seen: set[str] = set()
+    for view in schedule.views:
+        if view.station_id in seen:
+            continue
+        seen.add(view.station_id)
+        station_ids.append(view.station_id)
+    return station_ids
+
+
+def _preferred_routes_by_station(schedule: DisplaySchedule) -> Dict[str, List[str]]:
+    routes_by_station: Dict[str, List[str]] = {}
+    for view in schedule.views:
+        routes = routes_by_station.setdefault(view.station_id, [])
+        if view.route_id not in routes:
+            routes.append(view.route_id)
+    return routes_by_station
+
+
+def maybe_refresh_station_feeds(state: RuntimeState, now_ts: int):
+    """Refresh all configured station feeds once per refresh interval."""
+    if not should_run_interval(
+        state.last_station_feed_refresh_ts,
+        now_ts,
+        Config.Display.REFRESH_INTERVAL,
+    ):
+        return
+
+    station_ids = _schedule_station_ids(state.schedule)
+    if not station_ids:
+        state.last_station_feed_refresh_ts = now_ts
+        return
+
+    preferred_routes = _preferred_routes_by_station(state.schedule)
+    station_labels = ", ".join(
+        f"{get_station_name(station_id)} ({station_id})" for station_id in station_ids
+    )
+    print(f"🔄 Refreshing station feeds: {station_labels}")
+
+    station_payloads = get_train_status_batch(
+        station_ids,
+        preferred_routes_by_station=preferred_routes,
+    )
+
+    state.station_feed_cache.clear()
+    for station_id in station_ids:
+        station_payload = station_payloads.get(station_id)
+        if station_payload is None:
+            continue
+        state.station_feed_cache[station_id] = (now_ts, station_payload)
+
+    state.last_station_feed_refresh_ts = now_ts
+    state.arrival_cache.clear()
+    state.unavailable_until.clear()
+
+
 def refresh_view_arrivals(
     display: MTALEDDisplay,
     current_route: str,
     now_ts: int,
     arrival_cache: Dict[CacheKey, ArrivalCacheValue],
+    station_feed_cache: Dict[str, StationFeedCacheValue],
     unavailable_until: Dict[CacheKey, int],
 ) -> Tuple[List[str], List[str], bool]:
     """Refresh arrivals for active view; return times and availability."""
-    route, uptown, downtown = display.get_realtime_data(
-        [current_route]
-    )
+    station_data = get_station_feed_data(display, station_feed_cache)
+    if station_data is None:
+        print(
+            f"⚠️ No station feed snapshot available for "
+            f"{get_station_name(display.station_id)}"
+        )
+        route, uptown, downtown = None, [], []
+    else:
+        route, uptown, downtown = display.get_realtime_data(
+            [current_route],
+            station_data=station_data,
+        )
     if not route:
         uptown, downtown = [], []
 
@@ -678,40 +780,242 @@ def refresh_view_arrivals(
     return uptown, downtown, True
 
 
+def reload_runtime_config(
+    config_path: Path,
+    schedule: DisplaySchedule,
+    active_index: int,
+    now_ts: int,
+    arrival_cache: Dict[CacheKey, ArrivalCacheValue],
+    station_feed_cache: Dict[str, StationFeedCacheValue],
+    unavailable_until: Dict[CacheKey, int],
+) -> Tuple[DisplaySchedule, int, bool]:
+    """Reload config and schedule from board.json."""
+    previous_refresh = Config.Display.REFRESH_INTERVAL
+    previous_rotation = Config.Display.ROTATION_INTERVAL
+    previous_citibike = Config.CitiBike.STATION_ID
+
+    try:
+        board_config = load_board_config(config_path)
+        apply_board_config(board_config)
+        reloaded_schedule = build_display_schedule(board_config.stations)
+    except Exception as exc:
+        print(f"⚠️ Config reload failed: {exc}")
+        return schedule, active_index, False
+
+    if not reloaded_schedule.views:
+        print("⚠️ Config reload ignored: empty schedule.")
+        return schedule, active_index, False
+
+    schedule_changed = reloaded_schedule != schedule
+    settings_changed = (
+        previous_refresh != Config.Display.REFRESH_INTERVAL
+        or previous_rotation != Config.Display.ROTATION_INTERVAL
+        or previous_citibike != Config.CitiBike.STATION_ID
+    )
+    if not schedule_changed and not settings_changed:
+        return schedule, active_index, False
+
+    arrival_cache.clear()
+    station_feed_cache.clear()
+    unavailable_until.clear()
+
+    next_index = get_available_view_index(
+        schedule=reloaded_schedule,
+        start_index=active_index,
+        unavailable_until=unavailable_until,
+        now_ts=now_ts,
+    )
+    if next_index is None:
+        next_index = 0
+
+    print(f"♻️ Reloaded board config from {config_path}")
+    return reloaded_schedule, next_index, True
+
+
+def maybe_reload_board_config(
+    config_path: Path,
+    state: RuntimeState,
+    now: float,
+    now_ts: int,
+):
+    """Apply board.json changes on refresh cadence."""
+    if not should_run_interval(
+        state.last_config_reload_check_ts,
+        now_ts,
+        Config.Display.REFRESH_INTERVAL,
+    ):
+        return
+
+    reloaded_schedule, reloaded_index, config_reloaded = reload_runtime_config(
+        config_path=config_path,
+        schedule=state.schedule,
+        active_index=state.active_index,
+        now_ts=now_ts,
+        arrival_cache=state.arrival_cache,
+        station_feed_cache=state.station_feed_cache,
+        unavailable_until=state.unavailable_until,
+    )
+    state.last_config_reload_check_ts = now_ts
+
+    if not config_reloaded:
+        return
+
+    state.schedule = reloaded_schedule
+    state.active_index = reloaded_index
+    state.next_rotation_ts = now + state.schedule.interval_seconds
+    state.last_render_signature = None
+    state.last_station_feed_refresh_ts = 0
+
+
+def maybe_rotate_display_view(state: RuntimeState, now: float, now_ts: int):
+    """Advance to next available station/line view on rotation cadence."""
+    if now < state.next_rotation_ts:
+        return
+
+    next_index = get_available_view_index(
+        schedule=state.schedule,
+        start_index=state.active_index + 1,
+        unavailable_until=state.unavailable_until,
+        now_ts=now_ts,
+    )
+    if next_index is not None:
+        state.active_index = next_index
+
+    state.next_rotation_ts = now + state.schedule.interval_seconds
+
+
+def sync_display_view(display: MTALEDDisplay, state: RuntimeState):
+    """Ensure display object tracks active schedule view."""
+    active_view = state.schedule.views[state.active_index]
+    if display.station_id != active_view.station_id:
+        display.set_station(active_view.station_id)
+
+    if state.current_route != active_view.route_id:
+        state.current_route = active_view.route_id
+        print(f"🔁 Switching line to {state.current_route}")
+
+
+def get_arrivals_for_active_view(
+    display: MTALEDDisplay,
+    state: RuntimeState,
+    now: float,
+    now_ts: int,
+) -> Optional[Tuple[List[str], List[str]]]:
+    """Return arrivals for active view or None when view should be skipped."""
+    cache_key = (display.station_id, state.current_route)
+    cached_arrivals = state.arrival_cache.get(cache_key)
+    if is_cache_stale(cached_arrivals, now_ts):
+        uptown, downtown, has_arrivals = refresh_view_arrivals(
+            display=display,
+            current_route=state.current_route,
+            now_ts=now_ts,
+            arrival_cache=state.arrival_cache,
+            station_feed_cache=state.station_feed_cache,
+            unavailable_until=state.unavailable_until,
+        )
+        if not has_arrivals:
+            next_index = get_available_view_index(
+                schedule=state.schedule,
+                start_index=state.active_index + 1,
+                unavailable_until=state.unavailable_until,
+                now_ts=now_ts,
+            )
+            if next_index is not None and next_index != state.active_index:
+                state.active_index = next_index
+                state.next_rotation_ts = now + state.schedule.interval_seconds
+            return None
+        return uptown, downtown
+
+    assert cached_arrivals is not None
+    _, uptown, downtown = cached_arrivals
+    return uptown, downtown
+
+
+def maybe_render_view(
+    display: MTALEDDisplay,
+    state: RuntimeState,
+    uptown: List[str],
+    downtown: List[str],
+):
+    """Render view only when content changes."""
+    station_name_window = display._get_station_name_window()
+    render_signature = (
+        display.station_id,
+        state.current_route,
+        tuple(uptown),
+        tuple(downtown),
+        station_name_window,
+    )
+    if render_signature == state.last_render_signature:
+        return
+
+    display.show_mta_station_info(
+        state.current_route,
+        DIRECTION_LABELS,
+        station_name_window=station_name_window,
+    )
+    display.show_mta_arrival_times(state.current_route, uptown, downtown)
+    state.last_render_signature = render_signature
+
+
+def maybe_refresh_citibike(now_ts: int, state: RuntimeState):
+    """Refresh Citi Bike data on refresh cadence."""
+    if not Config.CitiBike.ENABLED:
+        return
+
+    if not should_run_interval(
+        state.last_citibike_fetch_ts,
+        now_ts,
+        Config.Display.REFRESH_INTERVAL,
+    ):
+        return
+
+    try:
+        get_station_data(Config.CitiBike.STATION_ID)
+    except Exception as exc:
+        print(f"Error getting citibike data: {exc}")
+    state.last_citibike_fetch_ts = now_ts
+
+
 def main():
     """Run real-time MTA display"""
-    board_config = load_board_config()
+    config_path = resolve_board_config_path()
+    board_config = load_board_config(config_path)
     apply_board_config(board_config)
     schedule = build_display_schedule(board_config.stations)
     if not schedule.views:
         print("✗ No display views available. Exiting.")
         return
 
-    unavailable_until: Dict[CacheKey, int] = {}
     initial_index = get_available_view_index(
         schedule=schedule,
         start_index=0,
-        unavailable_until=unavailable_until,
+        unavailable_until={},
         now_ts=int(time.time()),
     )
     if initial_index is None:
         print("✗ No available display views. Exiting.")
         return
-    active_index = initial_index
-    active_view = schedule.views[active_index]
+    active_view = schedule.views[initial_index]
 
     print(
         f"🚇 Starting MTA display scheduler @ {schedule.interval_seconds}s "
         f"rotation, {Config.Display.REFRESH_INTERVAL}s refresh"
     )
     display = MTALEDDisplay(active_view.station_id)
-    current_route = active_view.route_id
+    start_ts = time.time()
+    state = RuntimeState(
+        schedule=schedule,
+        active_index=initial_index,
+        current_route=active_view.route_id,
+        next_rotation_ts=start_ts + schedule.interval_seconds,
+        last_config_reload_check_ts=int(start_ts),
+    )
 
-    # Cache arrivals by (station, route) so views can rotate faster than feed refresh.
-    arrival_cache: Dict[CacheKey, ArrivalCacheValue] = {}
-    last_citibike_fetch_ts = 0
-    last_render_signature: Optional[Tuple[str, str, Tuple[str, ...], Tuple[str, ...], str]] = None
-    next_rotation_ts = time.time() + schedule.interval_seconds
+    print(
+        f"🧩 Hot reload enabled for {config_path} "
+        f"(every {Config.Display.REFRESH_INTERVAL}s refresh)"
+    )
     
     try:
         display.clear()
@@ -720,75 +1024,19 @@ def main():
             now = time.time()
             now_ts = int(now)
 
-            if now >= next_rotation_ts:
-                next_index = get_available_view_index(
-                    schedule=schedule,
-                    start_index=active_index + 1,
-                    unavailable_until=unavailable_until,
-                    now_ts=now_ts,
-                )
-                if next_index is not None:
-                    active_index = next_index
-                next_rotation_ts = now + schedule.interval_seconds
+            maybe_reload_board_config(config_path, state, now, now_ts)
+            maybe_refresh_station_feeds(state, now_ts)
+            maybe_rotate_display_view(state, now, now_ts)
+            sync_display_view(display, state)
 
-            active_view = schedule.views[active_index]
+            arrivals = get_arrivals_for_active_view(display, state, now, now_ts)
+            if arrivals is None:
+                time.sleep(Config.Display.UI_TICK_INTERVAL)
+                continue
+            uptown, downtown = arrivals
 
-            if display.station_id != active_view.station_id:
-                display.set_station(active_view.station_id)
-
-            if current_route != active_view.route_id:
-                current_route = active_view.route_id
-                print(f"🔁 Switching line to {current_route}")
-
-            cache_key = (display.station_id, current_route)
-            cached_arrivals = arrival_cache.get(cache_key)
-            if is_cache_stale(cached_arrivals, now_ts):
-                uptown, downtown, has_arrivals = refresh_view_arrivals(
-                    display=display,
-                    current_route=current_route,
-                    now_ts=now_ts,
-                    arrival_cache=arrival_cache,
-                    unavailable_until=unavailable_until,
-                )
-                if not has_arrivals:
-                    next_index = get_available_view_index(
-                        schedule=schedule,
-                        start_index=active_index + 1,
-                        unavailable_until=unavailable_until,
-                        now_ts=now_ts,
-                    )
-                    if next_index is not None and next_index != active_index:
-                        active_index = next_index
-                        next_rotation_ts = time.time() + schedule.interval_seconds
-                    time.sleep(Config.Display.UI_TICK_INTERVAL)
-                    continue
-            else:
-                _, uptown, downtown = cached_arrivals
-
-            station_name_window = display._get_station_name_window()
-            render_signature = (
-                display.station_id,
-                current_route,
-                tuple(uptown),
-                tuple(downtown),
-                station_name_window,
-            )
-            if render_signature != last_render_signature:
-                display.show_mta_station_info(
-                    current_route,
-                    ['UPTOWN', 'DOWNTOWN'],
-                    station_name_window=station_name_window,
-                )
-                display.show_mta_arrival_times(current_route, uptown, downtown)
-                last_render_signature = render_signature
-
-            # Citi Bike stays on refresh cadence for now.
-            if (now_ts - last_citibike_fetch_ts) >= Config.Display.REFRESH_INTERVAL:
-                try:
-                    get_station_data(Config.CitiBike.STATION_ID)
-                except Exception as e:
-                    print(f"Error getting citibike data: {e}")
-                last_citibike_fetch_ts = now_ts
+            maybe_render_view(display, state, uptown, downtown)
+            maybe_refresh_citibike(now_ts, state)
 
             time.sleep(max(0.2, Config.Display.UI_TICK_INTERVAL))
             

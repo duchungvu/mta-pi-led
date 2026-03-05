@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MTA Board Controller</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='web_control.css') }}"
+    />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="header">
+        <h1>MTA Board Controller</h1>
+        <p>Configure what the LED board shows and preview the exact rotation.</p>
+      </header>
+
+      <div id="flash" class="flash" role="status" aria-live="polite"></div>
+
+      <section class="panel">
+        <h2>Board Settings</h2>
+        <div class="field-grid">
+          <label class="field">
+            <span>Rotation (seconds)</span>
+            <input id="rotation-seconds" type="number" min="1" step="1" />
+          </label>
+          <label class="field">
+            <span>Refresh (seconds)</span>
+            <input id="refresh-seconds" type="number" min="1" step="1" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save-config" type="button">Save Config</button>
+          <span id="config-version" class="meta">Version: --</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Stations</h2>
+        <div class="station-grid">
+          <div>
+            <label class="field">
+              <span>Search Stations</span>
+              <input
+                id="station-search"
+                type="text"
+                placeholder="Type station name or code"
+                autocomplete="off"
+              />
+            </label>
+            <ul id="search-results" class="list"></ul>
+          </div>
+
+          <div>
+            <h3>Selected (rotation order)</h3>
+            <ol id="selected-stations" class="list selected"></ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Schedule Preview</h2>
+        <p class="meta">Preview updates after config is saved.</p>
+        <ol id="schedule-preview" class="list selected"></ol>
+      </section>
+
+      <section class="panel">
+        <h2>Board Status</h2>
+        <div id="board-status-summary" class="meta">Loading status...</div>
+        <pre id="board-status-json" class="status-json"></pre>
+      </section>
+    </main>
+
+    <script
+      src="{{ url_for('static', filename='web_control.js') }}"
+      defer
+    ></script>
+  </body>
+</html>

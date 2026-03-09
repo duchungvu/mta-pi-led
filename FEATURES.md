@@ -41,6 +41,14 @@
   - Rotation/refresh settings form.
   - Save flow with optimistic config version handling.
   - Schedule preview panel and board status panel.
+- PWA support for web controller:
+  - Connection setup screen with configurable server URL.
+  - Service worker with cache-first for app shell, network-first for API calls.
+  - Web app manifest and icons for home screen install.
+- Live Arrivals panel in web controller:
+  - `GET /api/board/arrivals` endpoint returns real-time arrivals for all configured stations.
+  - Arrival cards with colored MTA line badges grouped by station.
+  - Auto-refresh polling keeps arrivals current.
 
 ## IN PROGRESS
 
@@ -55,7 +63,6 @@
   - Add graceful stale-data policy per view (show age/offline indicators).
 - Web app:
   - Add board status heartbeat from display runtime so UI can show currently-rendered view.
-  - Add arrivals panels for configured stations (matching board selections).
   - Default to nearest station on first load (for debug panel add flow).
   - Persist station picks in browser storage (cookie/localStorage).
 - Mobile app (last phase):

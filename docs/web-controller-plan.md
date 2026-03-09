@@ -35,6 +35,9 @@ The board and web app must use the same source of truth (`config/board.json`) an
   - Returns derived schedule preview from current config
 - `GET /api/board/status`
   - Returns heartbeat payload if available, else `status=unknown`
+- `GET /api/board/arrivals`
+  - Returns real-time arrivals for all configured stations
+  - Used by the Live Arrivals panel in the web controller
 
 ## Config Contract
 
@@ -59,7 +62,7 @@ The board and web app must use the same source of truth (`config/board.json`) an
 3. Runtime status integration
    - `led_board.py` writes heartbeat JSON periodically
    - Web status panel reads `/api/board/status`
-4. Arrivals debug panel
+4. Arrivals debug panel (done)
    - Show station arrivals for configured stations
    - Add manual refresh + auto refresh
 5. Mobile-ready extension

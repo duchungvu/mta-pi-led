@@ -2,21 +2,68 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>MTA Board Controller</title>
+    <link rel="manifest" href="/static/manifest.json" />
+    <meta name="theme-color" content="#0a7b83" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MTA Board" />
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='web_control.css') }}"
     />
   </head>
   <body>
-    <main class="layout">
+    <!-- Connection setup screen (first-run or settings) -->
+    <div id="connection-setup" class="setup-screen" hidden>
+      <div class="setup-card">
+        <h1>MTA Board Control</h1>
+        <p>Enter the address of your MTA Pi LED board.</p>
+        <label class="field">
+          <span>Server URL</span>
+          <input
+            id="server-url"
+            type="url"
+            placeholder="http://hung-rpi:5000"
+            autocomplete="url"
+          />
+        </label>
+        <div class="setup-actions">
+          <button id="test-connection" type="button">Test Connection</button>
+          <button id="skip-setup" type="button" class="secondary" hidden>Cancel</button>
+        </div>
+        <div id="setup-status" class="setup-status"></div>
+      </div>
+    </div>
+
+    <main class="layout" id="main-app" hidden>
       <header class="header">
         <h1>MTA Board Controller</h1>
         <p>Configure what the LED board shows and preview the exact rotation.</p>
+        <button id="change-server" type="button" class="secondary server-btn">
+          Server Settings
+        </button>
       </header>
 
+      <!-- Connection error banner -->
+      <div id="connection-banner" class="flash error" hidden>
+        Cannot reach board. <button id="retry-connection" type="button" class="secondary">Retry</button>
+      </div>
+
       <div id="flash" class="flash" role="status" aria-live="polite"></div>
+
+      <section class="panel">
+        <div class="arrivals-header">
+          <h2>Live Arrivals</h2>
+          <div class="arrivals-controls">
+            <span id="arrivals-updated" class="meta"></span>
+            <button id="refresh-arrivals" type="button" class="secondary">Refresh</button>
+          </div>
+        </div>
+        <div id="live-arrivals"></div>
+      </section>
 
       <section class="panel">
         <h2>Board Settings</h2>
@@ -76,5 +123,10 @@
       src="{{ url_for('static', filename='web_control.js') }}"
       defer
     ></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/static/sw.js");
+      }
+    </script>
   </body>
 </html>

@@ -20,12 +20,83 @@ body {
   font-family: "Space Grotesk", "Avenir Next", sans-serif;
   color: var(--ink);
   background: radial-gradient(circle at top left, #e7eff2, var(--bg) 55%);
+  -webkit-text-size-adjust: 100%;
 }
+
+/* --- Connection setup screen --- */
+
+.setup-screen[hidden] {
+  display: none;
+}
+
+.setup-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.setup-card {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 8px 30px rgba(16, 36, 44, 0.08);
+}
+
+.setup-card h1 {
+  margin: 0 0 8px;
+  font-size: 1.6rem;
+}
+
+.setup-card p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+.setup-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.setup-actions button {
+  min-height: 44px;
+  flex: 1;
+}
+
+.setup-status {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  min-height: 1.4em;
+}
+
+.setup-status.ok {
+  color: #0d4b50;
+}
+
+.setup-status.error {
+  color: var(--danger);
+}
+
+/* --- Main layout --- */
 
 .layout {
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
 }
 
 .header h1 {
@@ -36,7 +107,16 @@ body {
 .header p {
   margin: 6px 0 0;
   color: var(--muted);
+  flex-basis: 100%;
 }
+
+.server-btn {
+  margin-left: auto;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+}
+
+/* --- Flash messages --- */
 
 .flash {
   min-height: 24px;
@@ -45,9 +125,13 @@ body {
   border-radius: 8px;
   border: 1px solid transparent;
   font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.flash:empty {
+.flash:empty,
+.flash[hidden] {
   display: none;
 }
 
@@ -62,6 +146,14 @@ body {
   border-color: #f1b8bc;
   color: #782126;
 }
+
+.flash button {
+  font-size: 0.82rem;
+  padding: 4px 10px;
+  min-height: 32px;
+}
+
+/* --- Panels --- */
 
 .panel {
   background: var(--paper);
@@ -81,6 +173,8 @@ body {
   margin: 0 0 8px;
   font-size: 1rem;
 }
+
+/* --- Form fields --- */
 
 .field-grid {
   display: grid;
@@ -102,8 +196,9 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-family: "JetBrains Mono", "Courier New", monospace;
+  min-height: 44px;
 }
 
 .field input:focus {
@@ -118,6 +213,8 @@ body {
   gap: 12px;
 }
 
+/* --- Buttons --- */
+
 button {
   border: 1px solid var(--accent);
   background: var(--accent);
@@ -127,6 +224,9 @@ button {
   font-weight: 600;
   cursor: pointer;
   font-family: "Space Grotesk", "Avenir Next", sans-serif;
+  font-size: 0.95rem;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 
 button:hover {
@@ -149,6 +249,8 @@ button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* --- Station grid --- */
 
 .station-grid {
   display: grid;
@@ -175,8 +277,9 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px;
   border-bottom: 1px solid #e9eef1;
+  min-height: 56px;
 }
 
 .item:last-child {
@@ -199,6 +302,13 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.item-actions button {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
 .meta {
   color: var(--muted);
   font-size: 0.9rem;
@@ -216,13 +326,140 @@ button:disabled {
 }
 
 .empty {
-  padding: 10px 12px;
+  padding: 12px;
   color: var(--muted);
 }
+
+/* --- Live Arrivals --- */
+
+.arrivals-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.arrivals-header h2 {
+  margin: 0;
+}
+
+.arrivals-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.arrivals-controls button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.arrival-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfc;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.arrival-card:last-child {
+  margin-bottom: 0;
+}
+
+.arrival-station-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.arrival-route {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #e9eef1;
+}
+
+.arrival-route:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.line-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.arrival-directions {
+  flex: 1;
+  min-width: 0;
+}
+
+.arrival-direction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.arrival-direction:last-child {
+  margin-bottom: 0;
+}
+
+.direction-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.arrival-times {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.arrival-pill {
+  background: var(--accent-soft);
+  color: #0d4b50;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- Mobile responsive --- */
 
 @media (max-width: 820px) {
   .field-grid,
   .station-grid {
     grid-template-columns: 1fr;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .layout {
+    padding: 16px 12px 32px;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 480px) {
+  .item-actions button {
+    padding: 6px 8px;
+    font-size: 0.8rem;
   }
 }

@@ -8,7 +8,9 @@ import os
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request
+from flask_cors import CORS
 
+from app import get_train_status_batch
 from mta_pi_led.services.board_control import (
     build_schedule_preview,
     list_stations,
@@ -19,11 +21,17 @@ from mta_pi_led.services.board_control import (
 )
 
 app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 
 @app.get("/")
 def index() -> Any:
     return render_template("web_control.html")
+
+
+@app.get("/api/ping")
+def api_ping() -> Any:
+    return jsonify({"status": "ok"})
 
 
 @app.get("/api")
@@ -33,9 +41,11 @@ def api_index() -> Any:
             "name": "mta-pi-led board controller",
             "version": "v1",
             "endpoints": [
+                "GET /api/ping",
                 "GET /api/stations",
                 "GET /api/board/config",
                 "PUT /api/board/config",
+                "GET /api/board/arrivals",
                 "GET /api/board/schedule",
                 "GET /api/board/status",
             ],
@@ -141,6 +151,17 @@ def get_board_schedule() -> Any:
     )
 
 
+@app.get("/api/board/arrivals")
+def get_board_arrivals() -> Any:
+    raw_payload = load_config_payload()
+    config, _, _ = normalize_config_payload(raw_payload, strict=False)
+    stations = config.get("stations", [])
+    if not stations:
+        return jsonify({"arrivals": {}, "updated_at": _utc_now()})
+    arrivals = get_train_status_batch(stations)
+    return jsonify({"arrivals": arrivals, "updated_at": _utc_now()})
+
+
 @app.get("/api/board/status")
 def get_board_status() -> Any:
     status = load_board_runtime_status()
@@ -161,9 +182,9 @@ def _utc_now() -> str:
 
 if __name__ == "__main__":
     try:
-        port = int(os.getenv("WEB_PORT", "5000"))
+        port = int(os.getenv("WEB_PORT", "8080"))
     except ValueError:
-        port = 5000
+        port = 8080
     debug_enabled = os.getenv("WEB_DEBUG", "0") == "1"
     reloader_enabled = os.getenv("WEB_RELOADER", "0") == "1"
     app.run(

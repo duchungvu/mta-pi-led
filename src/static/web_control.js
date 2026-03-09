@@ -13,26 +13,146 @@ const state = {
   isSaving: false,
   saveQueued: false,
   autoSaveTimer: null,
+  serverUrl: "",
+  arrivalsPollHandle: null,
 };
 
-const elements = {
-  flash: document.getElementById("flash"),
-  rotationInput: document.getElementById("rotation-seconds"),
-  refreshInput: document.getElementById("refresh-seconds"),
-  versionLabel: document.getElementById("config-version"),
-  searchInput: document.getElementById("station-search"),
-  searchResults: document.getElementById("search-results"),
-  selectedStations: document.getElementById("selected-stations"),
-  saveButton: document.getElementById("save-config"),
-  schedulePreview: document.getElementById("schedule-preview"),
-  boardStatusSummary: document.getElementById("board-status-summary"),
-  boardStatusJson: document.getElementById("board-status-json"),
-};
+const elements = {};
+
+function cacheElements() {
+  elements.flash = document.getElementById("flash");
+  elements.rotationInput = document.getElementById("rotation-seconds");
+  elements.refreshInput = document.getElementById("refresh-seconds");
+  elements.versionLabel = document.getElementById("config-version");
+  elements.searchInput = document.getElementById("station-search");
+  elements.searchResults = document.getElementById("search-results");
+  elements.selectedStations = document.getElementById("selected-stations");
+  elements.saveButton = document.getElementById("save-config");
+  elements.schedulePreview = document.getElementById("schedule-preview");
+  elements.boardStatusSummary = document.getElementById("board-status-summary");
+  elements.boardStatusJson = document.getElementById("board-status-json");
+  elements.connectionSetup = document.getElementById("connection-setup");
+  elements.mainApp = document.getElementById("main-app");
+  elements.serverUrlInput = document.getElementById("server-url");
+  elements.testConnection = document.getElementById("test-connection");
+  elements.skipSetup = document.getElementById("skip-setup");
+  elements.setupStatus = document.getElementById("setup-status");
+  elements.changeServer = document.getElementById("change-server");
+  elements.connectionBanner = document.getElementById("connection-banner");
+  elements.retryConnection = document.getElementById("retry-connection");
+  elements.liveArrivals = document.getElementById("live-arrivals");
+  elements.arrivalsUpdated = document.getElementById("arrivals-updated");
+  elements.refreshArrivals = document.getElementById("refresh-arrivals");
+}
 
 document.addEventListener("DOMContentLoaded", () => {
-  bindEvents();
-  initialize();
+  cacheElements();
+  bindSetupEvents();
+  startConnectionFlow();
 });
+
+// --- Connection setup ---
+
+function getServerUrl() {
+  return localStorage.getItem("serverUrl") || "";
+}
+
+function setServerUrl(url) {
+  localStorage.setItem("serverUrl", url);
+  state.serverUrl = url;
+}
+
+function isRemote() {
+  return state.serverUrl !== "";
+}
+
+function apiUrl(path) {
+  return state.serverUrl + path;
+}
+
+function startConnectionFlow() {
+  const saved = getServerUrl();
+  if (saved) {
+    state.serverUrl = saved;
+    showMainApp();
+  } else {
+    showSetup(false);
+  }
+}
+
+function showSetup(allowCancel) {
+  elements.connectionSetup.hidden = false;
+  elements.mainApp.hidden = true;
+  elements.skipSetup.hidden = !allowCancel;
+  elements.serverUrlInput.value = state.serverUrl;
+  elements.setupStatus.textContent = "";
+  elements.serverUrlInput.focus();
+}
+
+async function showMainApp() {
+  elements.connectionSetup.hidden = true;
+  elements.mainApp.hidden = false;
+  elements.connectionBanner.hidden = true;
+  bindEvents();
+  try {
+    await initialize();
+  } catch {
+    // If loading fails, show the main app with error banner so user can retry or change server
+    showConnectionError();
+  }
+}
+
+function bindSetupEvents() {
+  elements.testConnection.addEventListener("click", async () => {
+    let url = elements.serverUrlInput.value.trim().replace(/\/+$/, "");
+    if (!url) {
+      // Empty means same-origin (local access)
+      url = "";
+    }
+
+    elements.setupStatus.textContent = "Testing connection...";
+    elements.setupStatus.className = "setup-status";
+    elements.testConnection.disabled = true;
+
+    try {
+      const resp = await fetch(url + "/api/ping");
+      const data = await resp.json();
+      if (data.status === "ok") {
+        elements.setupStatus.textContent = "Connected!";
+        elements.setupStatus.className = "setup-status ok";
+        setServerUrl(url);
+        setTimeout(() => showMainApp(), 500);
+      } else {
+        elements.setupStatus.textContent = "Unexpected response from server.";
+        elements.setupStatus.className = "setup-status error";
+      }
+    } catch {
+      elements.setupStatus.textContent = "Cannot reach server. Check the URL and try again.";
+      elements.setupStatus.className = "setup-status error";
+    } finally {
+      elements.testConnection.disabled = false;
+    }
+  });
+
+  elements.skipSetup.addEventListener("click", () => {
+    showMainApp();
+  });
+
+  elements.changeServer.addEventListener("click", () => {
+    showSetup(true);
+  });
+
+  elements.retryConnection.addEventListener("click", () => {
+    elements.connectionBanner.hidden = true;
+    initialize();
+  });
+}
+
+function showConnectionError() {
+  elements.connectionBanner.hidden = false;
+}
+
+// --- Main app ---
 
 async function initialize() {
   try {
@@ -40,7 +160,11 @@ async function initialize() {
     renderAll();
     await refreshBoardStatus();
     startStatusPolling();
+    // Load arrivals after everything else is ready — the GTFS fetch can be slow
+    // and blocks the single-threaded Flask server from handling other requests.
+    loadArrivals().then(() => startArrivalsPolling());
   } catch (error) {
+    showConnectionError();
     setFlash("error", `Failed to initialize controller: ${error.message}`);
   }
 }
@@ -62,6 +186,10 @@ function bindEvents() {
 
   elements.saveButton.addEventListener("click", () => {
     saveConfig();
+  });
+
+  elements.refreshArrivals.addEventListener("click", () => {
+    loadArrivals();
   });
 }
 
@@ -112,7 +240,7 @@ async function saveConfig() {
   state.isSaving = true;
   updateSaveButtonState();
   try {
-    const response = await fetch("/api/board/config", {
+    const response = await fetch(apiUrl("/api/board/config"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -147,6 +275,7 @@ async function saveConfig() {
     setFlash("ok", "Board config saved.");
     renderAll();
   } catch (error) {
+    showConnectionError();
     setFlash("error", `Save failed: ${error.message}`);
   } finally {
     state.isSaving = false;
@@ -348,8 +477,8 @@ function startStatusPolling() {
   }, 10000);
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(path) {
+  const response = await fetch(apiUrl(path));
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
@@ -394,3 +523,113 @@ async function autoSaveConfig() {
     await saveConfig();
   }
 }
+
+// --- Live Arrivals ---
+
+async function loadArrivals() {
+  elements.refreshArrivals.disabled = true;
+  try {
+    const payload = await fetchJson("/api/board/arrivals");
+    renderArrivals(payload);
+  } catch (error) {
+    elements.liveArrivals.innerHTML = '<div class="empty">Failed to load arrivals.</div>';
+    elements.arrivalsUpdated.textContent = "";
+  } finally {
+    elements.refreshArrivals.disabled = false;
+  }
+}
+
+function renderArrivals(payload) {
+  const arrivals = payload.arrivals || {};
+  const stationIds = Object.keys(arrivals);
+
+  if (stationIds.length === 0) {
+    elements.liveArrivals.innerHTML =
+      '<div class="empty">No stations configured. Add stations to see live arrivals.</div>';
+    elements.arrivalsUpdated.textContent = "";
+    return;
+  }
+
+  elements.arrivalsUpdated.textContent = "Updated " + (payload.updated_at || "");
+
+  let html = "";
+  for (const stationId of stationIds) {
+    const station = arrivals[stationId];
+    const routes = station.trains || {};
+    const routeIds = Object.keys(routes);
+
+    html += '<div class="arrival-card">';
+    html += '<div class="arrival-station-name">' + escapeHtml(station.station_name || stationId) + "</div>";
+
+    if (station.status === "error" || routeIds.length === 0) {
+      html += '<div class="empty">No trains available.</div>';
+      html += "</div>";
+      continue;
+    }
+
+    for (const routeId of routeIds) {
+      const route = routes[routeId];
+      const color = route.color || "#808080";
+      const textColor = route.text_color || "#FFFFFF";
+      const uptownArrivals = (route.uptown && route.uptown.next_arrivals) || [];
+      const downtownArrivals = (route.downtown && route.downtown.next_arrivals) || [];
+
+      if (uptownArrivals.length === 0 && downtownArrivals.length === 0) {
+        continue;
+      }
+
+      html += '<div class="arrival-route">';
+      html +=
+        '<span class="line-badge" style="background:' +
+        color +
+        ";color:" +
+        textColor +
+        '">' +
+        escapeHtml(routeId) +
+        "</span>";
+      html += '<div class="arrival-directions">';
+
+      if (uptownArrivals.length > 0) {
+        html += '<div class="arrival-direction">';
+        html += '<span class="direction-label">Uptown</span>';
+        html += '<div class="arrival-times">';
+        for (const t of uptownArrivals) {
+          html += '<span class="arrival-pill">' + escapeHtml(t) + "</span>";
+        }
+        html += "</div></div>";
+      }
+
+      if (downtownArrivals.length > 0) {
+        html += '<div class="arrival-direction">';
+        html += '<span class="direction-label">Downtown</span>';
+        html += '<div class="arrival-times">';
+        for (const t of downtownArrivals) {
+          html += '<span class="arrival-pill">' + escapeHtml(t) + "</span>";
+        }
+        html += "</div></div>";
+      }
+
+      html += "</div></div>";
+    }
+
+    html += "</div>";
+  }
+
+  elements.liveArrivals.innerHTML = html;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function startArrivalsPolling() {
+  if (state.arrivalsPollHandle) {
+    window.clearInterval(state.arrivalsPollHandle);
+  }
+  state.arrivalsPollHandle = window.setInterval(() => {
+    loadArrivals();
+  }, state.refreshSeconds * 1000);
+}
+

@@ -70,14 +70,23 @@ function apiUrl(path) {
   return state.serverUrl + path;
 }
 
-function startConnectionFlow() {
+async function startConnectionFlow() {
   const saved = getServerUrl();
   if (saved) {
     state.serverUrl = saved;
     showMainApp();
-  } else {
-    showSetup(false);
+    return;
   }
+  try {
+    const resp = await fetch("/api/ping");
+    const data = await resp.json();
+    if (data.status === "ok") {
+      setServerUrl("");
+      showMainApp();
+      return;
+    }
+  } catch {}
+  showSetup(false);
 }
 
 function showSetup(allowCancel) {

@@ -104,7 +104,7 @@ Adjust these values before starting the display. Scripts now auto-detect the pro
 - Stop web controller app: `./scripts/web/stop.sh`
 - Restart web controller app: `./scripts/web/restart.sh`
 - View web controller logs (attach tmux): `./scripts/web/view.sh`
-  - Open `http://localhost:5000` for Controller UI v1 (installable as a PWA).
+  - Open `http://hung-rpi.local:8080` for Controller UI v1 (installable as a PWA).
   - Optional: `SESSION_NAME=mta-web`
   - Optional: `ENABLE_NGROK=1` to open a second tmux window with `ngrok http <WEB_PORT>`
   - Optional: `WEB_DEBUG=1 WEB_RELOADER=1` for Flask auto-reload during UI development

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-### ====== CONFIGURE ======
-PI_USER="hung"                         # your Pi username
-PI_HOST="hung-rpi"                     # Pi hostname, or use its IP if needed
-PI_DIR="/home/${PI_USER}/mta-pi-led"   # remote folder (same name as project)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/../pi-env.sh"
+
 RSYNC_BWLIMIT=0                        # limit rsync speed, 0 = unlimited
-### ========================
 
 SRC="$(pwd)/"
 DEST="${PI_USER}@${PI_HOST}:${PI_DIR}"
@@ -14,6 +12,7 @@ DEST="${PI_USER}@${PI_HOST}:${PI_DIR}"
 EXCLUDES=(
   --exclude ".git"
   --exclude ".venv"
+  --exclude "venv"
   --exclude "node_modules"
   --exclude ".cache"
   --exclude "dist"

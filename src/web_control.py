@@ -158,7 +158,7 @@ def get_board_arrivals() -> Any:
     stations = config.get("stations", [])
     if not stations:
         return jsonify({"arrivals": {}, "updated_at": _utc_now()})
-    arrivals = get_train_status_batch(stations)
+    arrivals = get_train_status_batch(stations, discover_routes=True)
     return jsonify({"arrivals": arrivals, "updated_at": _utc_now()})
 
 

@@ -49,6 +49,10 @@
   - `GET /api/board/arrivals` endpoint returns real-time arrivals for all configured stations.
   - Arrival cards with colored MTA line badges grouped by station.
   - Auto-refresh polling keeps arrivals current.
+- Dynamic realtime route discovery:
+  - Board and web arrivals scan GTFS realtime feeds for routes currently stopping at configured station stop IDs.
+  - Static station lines remain the baseline schedule, with discovered live routes appended after them.
+  - Discovered routes expire after a short stale window to avoid flicker from one missed feed update.
 
 ## IN PROGRESS
 

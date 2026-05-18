@@ -104,6 +104,7 @@ class Config:
     class Display:
         """Display behavior settings"""
         ARRIVALS_PER_DIRECTION = 3  # Show 3 arrival times per direction
+        DYNAMIC_ROUTE_STALE_REFRESHES = 2
         STATION_NAME_VISIBLE_CHARS = 5
         STATION_NAME_SCROLL_GAP = 3
         STATION_NAME_SCROLL_STEP_SECONDS = 0.22
@@ -128,6 +129,7 @@ class RuntimeState:
     """Mutable runtime state for the display loop."""
 
     schedule: DisplaySchedule
+    configured_schedule: DisplaySchedule
     active_index: int
     current_route: str
     next_rotation_ts: float
@@ -138,6 +140,7 @@ class RuntimeState:
     arrival_cache: Dict[CacheKey, ArrivalCacheValue] = field(default_factory=dict)
     station_feed_cache: Dict[str, StationFeedCacheValue] = field(default_factory=dict)
     unavailable_until: Dict[CacheKey, int] = field(default_factory=dict)
+    dynamic_route_expiry: Dict[CacheKey, int] = field(default_factory=dict)
 
 
 class MTALEDDisplay:
@@ -589,27 +592,29 @@ def apply_board_config(board_config: BoardConfig):
     Config.CitiBike.STATION_ID = board_config.citibike_station_id
 
 
+def get_static_station_routes(station_id: str) -> List[str]:
+    """Return configured station routes from local station metadata."""
+    if not is_valid_station(station_id):
+        print(f"⚠️ Skipping invalid station in schedule: {station_id}")
+        return []
+
+    merged: List[str] = []
+    seen: set[str] = set()
+    for route in get_station_lines(station_id):
+        route = str(route).strip().upper()
+        if not route or route in seen:
+            continue
+        seen.add(route)
+        merged.append(route)
+    return merged
+
+
 def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
     """Build station/line rotation schedule from configured stations."""
 
-    def _line_lookup(station_id: str) -> List[str]:
-        if not is_valid_station(station_id):
-            print(f"⚠️ Skipping invalid station in schedule: {station_id}")
-            return []
-
-        merged: List[str] = []
-        seen: set[str] = set()
-        for route in get_station_lines(station_id):
-            route = str(route).strip().upper()
-            if not route or route in seen:
-                continue
-            seen.add(route)
-            merged.append(route)
-        return merged
-
     fallback_route = Config.MTA.ROUTES[0] if Config.MTA.ROUTES else "F"
     if is_valid_station(Config.MTA.STATION):
-        fallback_lines = _line_lookup(Config.MTA.STATION)
+        fallback_lines = get_static_station_routes(Config.MTA.STATION)
         if fallback_lines:
             fallback_route = fallback_lines[0]
 
@@ -619,7 +624,7 @@ def build_display_schedule(station_ids: List[str]) -> DisplaySchedule:
 
     schedule = create_display_schedule(
         station_ids=valid_station_ids,
-        line_lookup=_line_lookup,
+        line_lookup=get_static_station_routes,
         interval_seconds=Config.Display.ROTATION_INTERVAL,
         default_view=DisplayView(
             station_id=Config.MTA.STATION,
@@ -704,7 +709,145 @@ def _preferred_routes_by_station(schedule: DisplaySchedule) -> Dict[str, List[st
     return routes_by_station
 
 
-def maybe_refresh_station_feeds(state: RuntimeState, now_ts: int):
+def _normalize_route_sequence(routes: Sequence[Any]) -> List[str]:
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for route in routes or []:
+        route_id = str(route).strip().upper()
+        if not route_id or route_id in seen:
+            continue
+        seen.add(route_id)
+        normalized.append(route_id)
+    return normalized
+
+
+def _remember_dynamic_routes(
+    dynamic_route_expiry: Dict[CacheKey, int],
+    station_ids: Sequence[str],
+    static_routes_by_station: Dict[str, List[str]],
+    station_payloads: Dict[str, Dict[str, Any]],
+    now_ts: int,
+):
+    configured_station_ids = set(station_ids)
+    for key, expires_at in list(dynamic_route_expiry.items()):
+        if key[0] not in configured_station_ids or expires_at <= now_ts:
+            del dynamic_route_expiry[key]
+
+    ttl_seconds = (
+        Config.Display.REFRESH_INTERVAL
+        * Config.Display.DYNAMIC_ROUTE_STALE_REFRESHES
+    )
+    for station_id, station_payload in station_payloads.items():
+        static_routes = set(static_routes_by_station.get(station_id, []))
+        for route_id in _normalize_route_sequence(
+            station_payload.get("active_routes", [])
+        ):
+            if route_id in static_routes:
+                continue
+            dynamic_route_expiry[(station_id, route_id)] = now_ts + ttl_seconds
+
+
+def _routes_with_dynamic_discovery(
+    station_ids: Sequence[str],
+    static_routes_by_station: Dict[str, List[str]],
+    dynamic_route_expiry: Dict[CacheKey, int],
+    now_ts: int,
+) -> Dict[str, List[str]]:
+    routes_by_station: Dict[str, List[str]] = {}
+    for station_id in station_ids:
+        static_routes = _normalize_route_sequence(
+            static_routes_by_station.get(station_id, [])
+        )
+        static_route_set = set(static_routes)
+        dynamic_routes = sorted(
+            route_id
+            for (dynamic_station_id, route_id), expires_at in dynamic_route_expiry.items()
+            if (
+                dynamic_station_id == station_id
+                and expires_at > now_ts
+                and route_id not in static_route_set
+            )
+        )
+        routes_by_station[station_id] = static_routes + dynamic_routes
+    return routes_by_station
+
+
+def _build_schedule_from_route_map(
+    station_ids: Sequence[str],
+    routes_by_station: Dict[str, List[str]],
+) -> DisplaySchedule:
+    default_view: Optional[DisplayView] = None
+    for station_id in station_ids:
+        routes = routes_by_station.get(station_id, [])
+        if routes:
+            default_view = DisplayView(station_id=station_id, route_id=routes[0])
+            break
+
+    return create_display_schedule(
+        station_ids=station_ids,
+        line_lookup=lambda station_id: routes_by_station.get(station_id, []),
+        interval_seconds=Config.Display.ROTATION_INTERVAL,
+        default_view=default_view,
+    )
+
+
+def _log_schedule(label: str, schedule: DisplaySchedule):
+    schedule_label = ", ".join(
+        f"{view.station_id}:{view.route_id}" for view in schedule.views
+    )
+    print(
+        f"📋 {label} ({schedule.interval_seconds}s): "
+        f"{schedule_label if schedule_label else '[empty]'}"
+    )
+
+
+def _sync_live_schedule(
+    state: RuntimeState,
+    station_ids: Sequence[str],
+    static_routes_by_station: Dict[str, List[str]],
+    station_payloads: Dict[str, Dict[str, Any]],
+    now: float,
+    now_ts: int,
+):
+    previous_view = None
+    if 0 <= state.active_index < len(state.schedule.views):
+        previous_view = state.schedule.views[state.active_index]
+
+    _remember_dynamic_routes(
+        state.dynamic_route_expiry,
+        station_ids,
+        static_routes_by_station,
+        station_payloads,
+        now_ts,
+    )
+    live_routes = _routes_with_dynamic_discovery(
+        station_ids,
+        static_routes_by_station,
+        state.dynamic_route_expiry,
+        now_ts,
+    )
+    live_schedule = _build_schedule_from_route_map(station_ids, live_routes)
+    if not live_schedule.views or live_schedule == state.schedule:
+        return
+
+    state.schedule = live_schedule
+    if previous_view in live_schedule.views:
+        state.active_index = live_schedule.views.index(previous_view)
+    else:
+        next_index = get_available_view_index(
+            schedule=live_schedule,
+            start_index=0,
+            unavailable_until=state.unavailable_until,
+            now_ts=now_ts,
+        )
+        state.active_index = next_index if next_index is not None else 0
+        state.next_rotation_ts = now + live_schedule.interval_seconds
+
+    state.last_render_signature = None
+    _log_schedule("Live display schedule", live_schedule)
+
+
+def maybe_refresh_station_feeds(state: RuntimeState, now: float, now_ts: int):
     """Refresh all configured station feeds once per refresh interval."""
     if not should_run_interval(
         state.last_station_feed_refresh_ts,
@@ -713,12 +856,12 @@ def maybe_refresh_station_feeds(state: RuntimeState, now_ts: int):
     ):
         return
 
-    station_ids = _schedule_station_ids(state.schedule)
+    station_ids = _schedule_station_ids(state.configured_schedule)
     if not station_ids:
         state.last_station_feed_refresh_ts = now_ts
         return
 
-    preferred_routes = _preferred_routes_by_station(state.schedule)
+    preferred_routes = _preferred_routes_by_station(state.configured_schedule)
     station_labels = ", ".join(
         f"{get_station_name(station_id)} ({station_id})" for station_id in station_ids
     )
@@ -727,6 +870,7 @@ def maybe_refresh_station_feeds(state: RuntimeState, now_ts: int):
     station_payloads = get_train_status_batch(
         station_ids,
         preferred_routes_by_station=preferred_routes,
+        discover_routes=True,
     )
 
     state.station_feed_cache.clear()
@@ -736,6 +880,14 @@ def maybe_refresh_station_feeds(state: RuntimeState, now_ts: int):
             continue
         state.station_feed_cache[station_id] = (now_ts, station_payload)
 
+    _sync_live_schedule(
+        state,
+        station_ids,
+        preferred_routes,
+        station_payloads,
+        now,
+        now_ts,
+    )
     state.last_station_feed_refresh_ts = now_ts
     state.arrival_cache.clear()
     state.unavailable_until.clear()
@@ -782,12 +934,13 @@ def refresh_view_arrivals(
 
 def reload_runtime_config(
     config_path: Path,
-    schedule: DisplaySchedule,
+    configured_schedule: DisplaySchedule,
     active_index: int,
     now_ts: int,
     arrival_cache: Dict[CacheKey, ArrivalCacheValue],
     station_feed_cache: Dict[str, StationFeedCacheValue],
     unavailable_until: Dict[CacheKey, int],
+    dynamic_route_expiry: Dict[CacheKey, int],
 ) -> Tuple[DisplaySchedule, int, bool]:
     """Reload config and schedule from board.json."""
     previous_refresh = Config.Display.REFRESH_INTERVAL
@@ -800,24 +953,25 @@ def reload_runtime_config(
         reloaded_schedule = build_display_schedule(board_config.stations)
     except Exception as exc:
         print(f"⚠️ Config reload failed: {exc}")
-        return schedule, active_index, False
+        return configured_schedule, active_index, False
 
     if not reloaded_schedule.views:
         print("⚠️ Config reload ignored: empty schedule.")
-        return schedule, active_index, False
+        return configured_schedule, active_index, False
 
-    schedule_changed = reloaded_schedule != schedule
+    schedule_changed = reloaded_schedule != configured_schedule
     settings_changed = (
         previous_refresh != Config.Display.REFRESH_INTERVAL
         or previous_rotation != Config.Display.ROTATION_INTERVAL
         or previous_citibike != Config.CitiBike.STATION_ID
     )
     if not schedule_changed and not settings_changed:
-        return schedule, active_index, False
+        return configured_schedule, active_index, False
 
     arrival_cache.clear()
     station_feed_cache.clear()
     unavailable_until.clear()
+    dynamic_route_expiry.clear()
 
     next_index = get_available_view_index(
         schedule=reloaded_schedule,
@@ -848,18 +1002,20 @@ def maybe_reload_board_config(
 
     reloaded_schedule, reloaded_index, config_reloaded = reload_runtime_config(
         config_path=config_path,
-        schedule=state.schedule,
+        configured_schedule=state.configured_schedule,
         active_index=state.active_index,
         now_ts=now_ts,
         arrival_cache=state.arrival_cache,
         station_feed_cache=state.station_feed_cache,
         unavailable_until=state.unavailable_until,
+        dynamic_route_expiry=state.dynamic_route_expiry,
     )
     state.last_config_reload_check_ts = now_ts
 
     if not config_reloaded:
         return
 
+    state.configured_schedule = reloaded_schedule
     state.schedule = reloaded_schedule
     state.active_index = reloaded_index
     state.next_rotation_ts = now + state.schedule.interval_seconds
@@ -1006,6 +1162,7 @@ def main():
     start_ts = time.time()
     state = RuntimeState(
         schedule=schedule,
+        configured_schedule=schedule,
         active_index=initial_index,
         current_route=active_view.route_id,
         next_rotation_ts=start_ts + schedule.interval_seconds,
@@ -1025,7 +1182,7 @@ def main():
             now_ts = int(now)
 
             maybe_reload_board_config(config_path, state, now, now_ts)
-            maybe_refresh_station_feeds(state, now_ts)
+            maybe_refresh_station_feeds(state, now, now_ts)
             maybe_rotate_display_view(state, now, now_ts)
             sync_display_view(display, state)
 

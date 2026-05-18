@@ -121,6 +121,15 @@ def _initialize_route_times_by_station(
     return route_times_by_station
 
 
+def _ensure_route_times(
+    route_times_by_station: Dict[str, Dict[str, Dict[str, set[int]]]],
+    station_id: str,
+    route_id: str,
+) -> Dict[str, set[int]]:
+    station_routes = route_times_by_station.setdefault(station_id, {})
+    return station_routes.setdefault(route_id, {'uptown': set(), 'downtown': set()})
+
+
 def _build_stop_to_station_index(station_ids: List[str]) -> Dict[str, List[str]]:
     stop_to_stations: Dict[str, List[str]] = {}
     for station_id in station_ids:
@@ -139,7 +148,13 @@ def _build_route_targets(
     return route_targets
 
 
-def _get_needed_feed_keys(station_routes: Dict[str, List[str]]) -> List[str]:
+def _get_needed_feed_keys(
+    station_routes: Dict[str, List[str]],
+    discover_routes: bool = False,
+) -> List[str]:
+    if discover_routes:
+        return sorted(FEEDS.keys())
+
     feed_keys = {
         ROUTE_TO_FEED[route]
         for routes in station_routes.values()
@@ -155,6 +170,7 @@ def _process_feed_for_batch(
     stop_to_stations: Dict[str, List[str]],
     route_targets: Dict[str, set[str]],
     route_times_by_station: Dict[str, Dict[str, Dict[str, set[int]]]],
+    discover_routes: bool = False,
 ) -> Dict[str, set[str]]:
     response = requests.get(feed_url, headers=GTFS_HEADERS, timeout=10)
     response.raise_for_status()
@@ -171,8 +187,10 @@ def _process_feed_for_batch(
 
         trip_update = entity.trip_update
         base_route = _normalize_route(trip_update.trip.route_id)
+        if not base_route:
+            continue
         target_stations = route_targets.get(base_route)
-        if not target_stations:
+        if not discover_routes and not target_stations:
             continue
 
         for stop_time_update in trip_update.stop_time_update:
@@ -196,12 +214,22 @@ def _process_feed_for_batch(
                 continue
 
             for station_id in station_ids_for_stop:
-                if station_id not in target_stations:
+                if (
+                    not discover_routes
+                    and (target_stations is None or station_id not in target_stations)
+                ):
                     continue
-                route_times_by_station[station_id][base_route][direction].add(arrival_time)
+
+                route_times = _ensure_route_times(
+                    route_times_by_station,
+                    station_id,
+                    base_route,
+                )
+                route_times[direction].add(arrival_time)
                 active_routes_by_station[station_id].add(base_route)
 
     return active_routes_by_station
+
 
 def format_arrival_times(times, current_time):
     next_arrivals = []
@@ -214,12 +242,27 @@ def format_arrival_times(times, current_time):
             next_arrivals.append(f'{minutes} min')
     return next_arrivals
 
-def process_route_times(route_times, current_time, selected_station):
+
+def _build_route_order(static_routes: List[str], route_times: Dict[str, Any]) -> List[str]:
+    static_route_set = set(static_routes)
+    ordered_routes = [route for route in static_routes if route in route_times]
+    ordered_routes.extend(
+        sorted(route for route in route_times if route not in static_route_set)
+    )
+    return ordered_routes
+
+
+def process_route_times(route_times, current_time, selected_station, route_order=None):
     if not is_valid_station(selected_station):
         selected_station = get_default_station()
     
     train_status = {}
-    for route_id, direction_data in route_times.items():
+    ordered_routes = route_order if route_order is not None else list(route_times.keys())
+    for route_id in ordered_routes:
+        direction_data = route_times.get(route_id)
+        if direction_data is None:
+            continue
+
         uptown_times = sorted(list(direction_data['uptown']))[:3]
         downtown_times = sorted(list(direction_data['downtown']))[:3]
 
@@ -242,9 +285,11 @@ def process_route_times(route_times, current_time, selected_station):
         }
     return train_status
 
+
 def get_train_status_batch(
     selected_stations: Iterable[Any],
     preferred_routes_by_station: Optional[Dict[str, List[str]]] = None,
+    discover_routes: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     try:
         clear_log_file()
@@ -255,7 +300,10 @@ def get_train_status_batch(
         route_times_by_station = _initialize_route_times_by_station(station_routes)
         stop_to_stations = _build_stop_to_station_index(station_ids)
         route_targets = _build_route_targets(station_routes)
-        needed_feeds = _get_needed_feed_keys(station_routes)
+        needed_feeds = _get_needed_feed_keys(
+            station_routes,
+            discover_routes=discover_routes,
+        )
 
         current_time = int(datetime.now(timezone.utc).timestamp())
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -268,6 +316,7 @@ def get_train_status_batch(
                     stop_to_stations,
                     route_targets,
                     route_times_by_station,
+                    discover_routes=discover_routes,
                 )
                 routes_found = sorted(
                     {
@@ -286,6 +335,10 @@ def get_train_status_batch(
                 route_times_by_station.get(station_id, {}),
                 current_time,
                 station_id,
+                route_order=_build_route_order(
+                    station_routes.get(station_id, []),
+                    route_times_by_station.get(station_id, {}),
+                ),
             )
             station_payloads[station_id] = {
                 'status': 'success',

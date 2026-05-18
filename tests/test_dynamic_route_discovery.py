@@ -10,7 +10,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import app as mta_app  # noqa: E402
+from mta_pi_led.services import mta_arrivals as mta_app  # noqa: E402
 
 
 class FakeResponse:
@@ -46,7 +46,10 @@ class DynamicRouteDiscoveryTest(unittest.TestCase):
 
     def process_feed(self, route_id, stop_updates, discover_routes=False):
         feed_bytes = build_feed(route_id, stop_updates)
-        with patch("app.requests.get", return_value=FakeResponse(feed_bytes)):
+        with patch(
+            "mta_pi_led.services.mta_arrivals.requests.get",
+            return_value=FakeResponse(feed_bytes),
+        ):
             return mta_app._process_feed_for_batch(
                 "https://example.test/feed",
                 self.current_time,

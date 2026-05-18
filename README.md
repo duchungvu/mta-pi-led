@@ -118,7 +118,7 @@ Adjust these values before starting the display. Scripts now auto-detect the pro
 
 ## Data Sources
 
-- MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/app.py` via `get_train_status`.
+- MTA GTFS feeds: URLs in `src/mta_feeds.py`; fetched in `src/mta_pi_led/services/mta_arrivals.py` via `get_train_status`.
 - Citi Bike: station info/status via `src/mta_pi_led/services/citibike.py`.
 
 ## MTA GTFS-Realtime Feed Overview

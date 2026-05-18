@@ -29,6 +29,7 @@
 - Phase 1 repo baseline completed:
   - Added package root at `src/mta_pi_led/`
   - Moved Citi Bike service into `src/mta_pi_led/services/citibike.py`
+- Extracted MTA arrival/feed logic into `src/mta_pi_led/services/mta_arrivals.py` so board/web runtimes no longer import the legacy Flask page app for train data.
 - Web controller API baseline (from-scratch) added in `src/web_control.py`:
   - `GET /api/stations` (station picker/search source)
   - `GET /api/board/config` (single source of truth config)

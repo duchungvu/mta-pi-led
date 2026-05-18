@@ -31,9 +31,8 @@ from mta_pi_led.services.display_scheduler import (
     DisplayView,
     create_display_schedule,
 )
+from mta_pi_led.services.mta_arrivals import get_train_status, get_train_status_batch
 
-# Import MTA data functions
-from app import get_train_status, get_train_status_batch
 from station_data import get_station_lines, is_valid_station, get_station_name
 
 CacheKey = Tuple[str, str]

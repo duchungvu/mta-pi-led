@@ -10,7 +10,6 @@ from typing import Any
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
-from app import get_train_status_batch
 from mta_pi_led.services.board_control import (
     build_schedule_preview,
     list_stations,
@@ -19,6 +18,7 @@ from mta_pi_led.services.board_control import (
     normalize_config_payload,
     save_config_payload,
 )
+from mta_pi_led.services.mta_arrivals import get_train_status_batch
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})

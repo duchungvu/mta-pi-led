@@ -1,6 +1,6 @@
 # MTA Pi LED Display
 
-Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The display loop and hardware control live in `src/led_board.py`.
+Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matrix (Adafruit bonnet/HAT) driven by a Raspberry Pi. The board entrypoint remains `src/led_board.py`, with runtime internals under `src/mta_pi_led/board/`.
 
 ## What it Shows
 
@@ -43,7 +43,7 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
    ```
 
 3) Keep assets in place  
-   Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in `src/led_board.py`.
+   Fonts and icons are referenced relative to `src/` (`../fonts`, `../icons`). Do not move them or adjust the paths in the board display settings.
 
 4) Sync code to the Pi (from your dev machine)
 
@@ -66,8 +66,8 @@ Real-time NYC subway arrivals and Citi Bike availability on a 64x32 RGB LED matr
   - `refresh_seconds`: seconds between data refreshes
   - `citibike_station_id`: Citi Bike station ID to query
 - The board runtime does one batched subway refresh pass per `refresh_seconds` across scheduled stations/routes, then rotates views from that cached snapshot.
-- `led_board.py` hot-reloads `config/board.json` on the same cadence as feed refresh (`refresh_seconds`, default 30s), so config edits apply without restarting the board process.
-- Hardware/layout defaults live in `src/led_board.py` (`Config.Hardware`, `Config.Layout`, colors/fonts/icons).
+- The board runtime hot-reloads `config/board.json` on the same cadence as feed refresh (`refresh_seconds`, default 30s), so config edits apply without restarting the board process.
+- Hardware/layout defaults live in `src/mta_pi_led/board/settings.py` (`Config.Hardware`, `Config.Layout`, colors/fonts/icons).
 - `Config.Hardware`: `ROWS`, `COLS`, `BRIGHTNESS`, `GPIO_SLOWDOWN`, `MAPPING`
 - `Config.Files.ROUTE_ICONS`: map of route → icon (`F` and `M` PNGs included)
 - `Config.Files.FONT`: bitmap font path

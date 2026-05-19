@@ -12,12 +12,17 @@
 - Board supports config-driven station selection via `config/board.json`.
 - Existing operational workflow is in place (`scripts/board/start.sh`, `scripts/board/stop.sh`, `scripts/sync/pi-sync.sh`).
 - Added runtime board config file at `config/board.json` for station/refresh/rotation/Citi Bike settings.
-- Main display runtime entrypoint is `src/led_board.py` (single runtime entrypoint).
+- Main display runtime entrypoint is `src/led_board.py`, with board internals under `src/mta_pi_led/board/`.
 - Added shared display scheduler service (`display_scheduler`) for station/line view rotation.
 - Board rotates across configured station/line views using `rotation_seconds`, with cached arrivals keyed by `(station, line)`.
 - Board performs one batched subway feed refresh pass per `refresh_seconds` for all scheduled stations/routes, then rotates from cached results.
 - Board supports hot reload of `config/board.json` at runtime on refresh cadence (no process restart needed for config edits).
 - Runtime loop refactored into focused helper functions + `RuntimeState` to keep scheduler/render logic maintainable.
+- Split board runtime into focused package modules:
+  - `mta_pi_led.board.settings` for constants/config application
+  - `mta_pi_led.board.display` for Pi matrix rendering
+  - `mta_pi_led.board.runtime` for schedule/cache/reload/render loop behavior
+  - `src/led_board.py` remains the compatibility entrypoint for Pi scripts
 - Station name now auto-scrolls when it exceeds available display width.
 - Board skips routes with no live arrivals and retries them after refresh cooldown.
 - Realtime station parsing now returns only actively running lines (lines with live arrivals), plus `active_routes` in API payloads.
